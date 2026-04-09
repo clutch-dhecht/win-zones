@@ -291,7 +291,7 @@ STATE_ABBREV = {
     'Wisconsin': 'WI', 'Wyoming': 'WY'
 }
 
-US_STATES = set(STATE_ABBREV.keys()) | set(STATE_ABBREV.values())
+US_STATES = set(STATE_ABBREV.keys()) | set(STATE_ABBREV.values()) | set(k.upper() for k in STATE_ABBREV.keys())
 
 def geocode_city(city, state):
     """Geocode a city name to lat/lon coordinates"""
@@ -311,4 +311,6 @@ def geocode_city(city, state):
 
 def is_us_state(state):
     """Check if a state name is a valid US state"""
-    return state.strip() in US_STATES
+    state_check = state.strip()
+    # Check both uppercase and title case
+    return state_check in US_STATES or state_check.upper() in US_STATES or state_check.title() in US_STATES

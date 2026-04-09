@@ -166,15 +166,70 @@ async def get_county_data():
     data = await db.county_data.find({}, {"_id": 0}).to_list(10000)
     return {"data": data}
 
+@api_router.post("/upload/wheat")
+async def upload_wheat_data(file: UploadFile = File(...)):
+    """Upload and process wheat acres CSV data"""
+    try:
+        contents = await file.read()
+        df = pd.read_csv(io.BytesIO(contents))
+        
+        if 'State' not in df.columns or 'County' not in df.columns:
+            raise HTTPException(status_code=400, detail="CSV must have 'State' and 'County' columns")
+        
+        # Get layer columns
+        layer_columns = [col for col in df.columns if col not in ['State', 'County']]
+        
+        processed_data = []
+        for _, row in df.iterrows():
+            # Skip if state is not a valid US state
+            state_val = str(row['State']).strip()
+            if not is_us_state(state_val):
+                continue
+                
+            layers = {}
+            for col in layer_columns:
+                # Handle comma-formatted numbers
+                value = row[col]
+                if isinstance(value, str):
+                    value = value.replace(',', '')
+                layers[col] = int(float(value)) if pd.notna(value) else 0
+            
+            processed_data.append({
+                'state': state_val,
+                'county': str(row['County']).upper().strip(),
+                'layers': layers
+            })
+        
+        # Store in MongoDB
+        await db.wheat_data.delete_many({})
+        if processed_data:
+            await db.wheat_data.insert_many(processed_data)
+        
+        return {
+            "success": True,
+            "processed": len(processed_data),
+            "layers": layer_columns
+        }
+    except Exception as e:
+        logging.error(f"Error processing wheat data: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/data/wheat")
+async def get_wheat_data():
+    """Get all wheat data"""
+    data = await db.wheat_data.find({}, {"_id": 0}).to_list(10000)
+    return {"data": data}
+
 @api_router.get("/analytics/top-zones")
 async def get_top_zones(layers: str = ""):
     """Calculate top opportunity zones based on active layers"""
     try:
         active_layers = layers.split(',') if layers else []
         
-        # Get city data
+        # Get all data
         city_data = await db.city_data.find({}, {"_id": 0}).to_list(10000)
         county_data = await db.county_data.find({}, {"_id": 0}).to_list(10000)
+        wheat_data = await db.wheat_data.find({}, {"_id": 0}).to_list(10000)
         
         # Aggregate by state
         state_totals = {}
@@ -194,6 +249,15 @@ async def get_top_zones(layers: str = ""):
                 state_totals[state] = 0
             
             for layer, value in county['layers'].items():
+                if not active_layers or layer in active_layers:
+                    state_totals[state] += value
+        
+        for wheat in wheat_data:
+            state = wheat['state']
+            if state not in state_totals:
+                state_totals[state] = 0
+            
+            for layer, value in wheat['layers'].items():
                 if not active_layers or layer in active_layers:
                     state_totals[state] += value
         

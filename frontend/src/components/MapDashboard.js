@@ -9,8 +9,8 @@ import { toast } from 'sonner';
 const MapDashboard = ({ apiUrl }) => {
   const [cityData, setCityData] = useState([]);
   const [countyData, setCountyData] = useState([]);
-  const [cityLayers, setCityLayers] = useState([]);
-  const [countyLayers, setCountyLayers] = useState([]);
+  const [wheatData, setWheatData] = useState([]);
+  const [allLayers, setAllLayers] = useState([]);
   const [activeLayers, setActiveLayers] = useState({});
   const [topZones, setTopZones] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -30,10 +30,10 @@ const MapDashboard = ({ apiUrl }) => {
       
       // Set layers and activate all by default
       const layers = response.data.layers || [];
-      setCityLayers(layers);
+      setAllLayers(prev => [...new Set([...prev, ...layers])]);
       const newActive = { ...activeLayers };
       layers.forEach(layer => {
-        newActive[`city_${layer}`] = true;
+        newActive[layer] = true;
       });
       setActiveLayers(newActive);
       
@@ -60,10 +60,10 @@ const MapDashboard = ({ apiUrl }) => {
       
       // Set layers and activate all by default
       const layers = response.data.layers || [];
-      setCountyLayers(layers);
+      setAllLayers(prev => [...new Set([...prev, ...layers])]);
       const newActive = { ...activeLayers };
       layers.forEach(layer => {
-        newActive[`county_${layer}`] = true;
+        newActive[layer] = true;
       });
       setActiveLayers(newActive);
       
@@ -71,6 +71,36 @@ const MapDashboard = ({ apiUrl }) => {
       await fetchCountyData();
     } catch (error) {
       toast.error('Failed to upload county data: ' + (error.response?.data?.detail || error.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleWheatUpload = async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+      setLoading(true);
+      const response = await axios.post(`${apiUrl}/upload/wheat`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      
+      toast.success(`Wheat data uploaded: ${response.data.processed} records processed`);
+      
+      // Set layers and activate all by default
+      const layers = response.data.layers || [];
+      setAllLayers(prev => [...new Set([...prev, ...layers])]);
+      const newActive = { ...activeLayers };
+      layers.forEach(layer => {
+        newActive[layer] = true;
+      });
+      setActiveLayers(newActive);
+      
+      // Fetch the data
+      await fetchWheatData();
+    } catch (error) {
+      toast.error('Failed to upload wheat data: ' + (error.response?.data?.detail || error.message));
     } finally {
       setLoading(false);
     }
@@ -91,6 +121,15 @@ const MapDashboard = ({ apiUrl }) => {
       setCountyData(response.data.data || []);
     } catch (error) {
       console.error('Error fetching county data:', error);
+    }
+  };
+
+  const fetchWheatData = async () => {
+    try {
+      const response = await axios.get(`${apiUrl}/data/wheat`);
+      setWheatData(response.data.data || []);
+    } catch (error) {
+      console.error('Error fetching wheat data:', error);
     }
   };
 
@@ -122,37 +161,46 @@ const MapDashboard = ({ apiUrl }) => {
   useEffect(() => {
     const loadExistingData = async () => {
       try {
-        const [cityResponse, countyResponse] = await Promise.all([
+        const [cityResponse, countyResponse, wheatResponse] = await Promise.all([
           axios.get(`${apiUrl}/data/city`),
-          axios.get(`${apiUrl}/data/county`)
+          axios.get(`${apiUrl}/data/county`),
+          axios.get(`${apiUrl}/data/wheat`)
         ]);
         
         const cityDataLoaded = cityResponse.data.data || [];
         const countyDataLoaded = countyResponse.data.data || [];
+        const wheatDataLoaded = wheatResponse.data.data || [];
+        
+        let combinedLayers = [];
         
         if (cityDataLoaded.length > 0) {
           setCityData(cityDataLoaded);
-          // Extract layer names from first item
           const layers = Object.keys(cityDataLoaded[0].layers);
-          setCityLayers(layers);
-          const newActive = {};
-          layers.forEach(layer => {
-            newActive[`city_${layer}`] = true;
-          });
-          setActiveLayers(prev => ({ ...prev, ...newActive }));
+          combinedLayers = [...combinedLayers, ...layers];
         }
         
         if (countyDataLoaded.length > 0) {
           setCountyData(countyDataLoaded);
-          // Extract layer names from first item
           const layers = Object.keys(countyDataLoaded[0].layers);
-          setCountyLayers(layers);
-          const newActive = {};
-          layers.forEach(layer => {
-            newActive[`county_${layer}`] = true;
-          });
-          setActiveLayers(prev => ({ ...prev, ...newActive }));
+          combinedLayers = [...combinedLayers, ...layers];
         }
+        
+        if (wheatDataLoaded.length > 0) {
+          setWheatData(wheatDataLoaded);
+          const layers = Object.keys(wheatDataLoaded[0].layers);
+          combinedLayers = [...combinedLayers, ...layers];
+        }
+        
+        // Remove duplicates and set all layers
+        const uniqueLayers = [...new Set(combinedLayers)];
+        setAllLayers(uniqueLayers);
+        
+        // Activate all layers by default
+        const newActive = {};
+        uniqueLayers.forEach(layer => {
+          newActive[layer] = true;
+        });
+        setActiveLayers(newActive);
       } catch (error) {
         console.error('Error loading existing data:', error);
       }
@@ -162,12 +210,12 @@ const MapDashboard = ({ apiUrl }) => {
   }, [apiUrl]);
 
   useEffect(() => {
-    if (cityData.length > 0 || countyData.length > 0) {
+    if (cityData.length > 0 || countyData.length > 0 || wheatData.length > 0) {
       fetchTopZones();
     }
-  }, [activeLayers, cityData, countyData]);
+  }, [activeLayers, cityData, countyData, wheatData]);
 
-  const hasData = cityData.length > 0 || countyData.length > 0;
+  const hasData = cityData.length > 0 || countyData.length > 0 || wheatData.length > 0;
 
   return (
     <div className="h-screen w-full flex flex-col md:flex-row bg-stone-100 overflow-hidden">
@@ -191,6 +239,7 @@ const MapDashboard = ({ apiUrl }) => {
             <FileUpload
               onCityUpload={handleCityUpload}
               onCountyUpload={handleCountyUpload}
+              onWheatUpload={handleWheatUpload}
               loading={loading}
             />
           </div>
@@ -202,8 +251,7 @@ const MapDashboard = ({ apiUrl }) => {
                 Layer Controls
               </label>
               <LayerControls
-                cityLayers={cityLayers}
-                countyLayers={countyLayers}
+                allLayers={allLayers}
                 activeLayers={activeLayers}
                 onToggle={toggleLayer}
               />
@@ -227,6 +275,7 @@ const MapDashboard = ({ apiUrl }) => {
         <MapVisualization
           cityData={cityData}
           countyData={countyData}
+          wheatData={wheatData}
           activeLayers={activeLayers}
           hasData={hasData}
         />

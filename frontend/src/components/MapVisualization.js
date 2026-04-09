@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup } from 'react-simple-maps';
 import { scaleLinear } from 'd3-scale';
 
-const geoUrl = 'https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json';
+const geoUrl = 'https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json';
 
 const LAYER_COLORS = {
   city_0: '#B45309',
@@ -14,58 +14,45 @@ const LAYER_COLORS = {
   county_2: '#14B8A6'
 };
 
-const MapVisualization = ({ cityData, countyData, activeLayers, hasData }) => {
+const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasData }) => {
   const [tooltip, setTooltip] = useState(null);
 
-  // Process county data for state-level choropleth aggregation
-  const stateTotals = useMemo(() => {
+  // Process county data for county-level choropleth
+  const countyTotals = useMemo(() => {
     const totals = {};
     
-    // Aggregate county data by state
-    countyData.forEach(county => {
-      const state = county.state;
-      if (!totals[state]) {
-        totals[state] = 0;
+    // Aggregate all county-level data
+    [...countyData, ...(wheatData || [])].forEach(county => {
+      const countyName = county.county.toUpperCase();
+      const key = countyName; // Just use county name as key
+      
+      if (!totals[key]) {
+        totals[key] = 0;
       }
       
       Object.keys(county.layers).forEach((layer) => {
-        const layerKey = `county_${layer}`;
+        const layerKey = layer; // Direct layer name
         if (activeLayers[layerKey]) {
-          totals[state] += county.layers[layer];
-        }
-      });
-    });
-    
-    // Add city data aggregation by state
-    cityData.forEach(city => {
-      const state = city.state;
-      if (!totals[state]) {
-        totals[state] = 0;
-      }
-      
-      Object.keys(city.layers).forEach((layer) => {
-        const layerKey = `city_${layer}`;
-        if (activeLayers[layerKey]) {
-          totals[state] += city.layers[layer];
+          totals[key] += county.layers[layer];
         }
       });
     });
     
     return totals;
-  }, [countyData, cityData, activeLayers]);
+  }, [countyData, wheatData, activeLayers]);
 
   // Get max value for scaling
-  const maxStateValue = useMemo(() => {
-    const values = Object.values(stateTotals);
+  const maxCountyValue = useMemo(() => {
+    const values = Object.values(countyTotals);
     return values.length > 0 ? Math.max(...values) : 1;
-  }, [stateTotals]);
+  }, [countyTotals]);
 
-  // Color scale for states
+  // Color scale for counties
   const colorScale = useMemo(() => {
     return scaleLinear()
-      .domain([0, maxStateValue])
+      .domain([0, maxCountyValue])
       .range(['#F5F5F4', '#166534']);
-  }, [maxStateValue]);
+  }, [maxCountyValue]);
 
   // Process city data for markers
   const cityMarkers = useMemo(() => {
@@ -75,8 +62,8 @@ const MapVisualization = ({ cityData, countyData, activeLayers, hasData }) => {
       let total = 0;
       let activeLayerCount = 0;
       
-      Object.keys(city.layers).forEach((layer, idx) => {
-        const layerKey = `city_${layer}`;
+      Object.keys(city.layers).forEach((layer) => {
+        const layerKey = layer; // Direct layer name
         if (activeLayers[layerKey]) {
           total += city.layers[layer];
           activeLayerCount++;
@@ -142,8 +129,8 @@ const MapVisualization = ({ cityData, countyData, activeLayers, hasData }) => {
               <Geographies geography={geoUrl}>
                 {({ geographies }) =>
                   geographies.map(geo => {
-                    const stateName = geo.properties.name;
-                    const value = stateTotals[stateName] || 0;
+                    const countyName = (geo.properties.name || '').toUpperCase();
+                    const value = countyTotals[countyName] || 0;
                     
                     return (
                       <Geography
@@ -151,11 +138,11 @@ const MapVisualization = ({ cityData, countyData, activeLayers, hasData }) => {
                         geography={geo}
                         fill={value > 0 ? colorScale(value) : '#F5F5F4'}
                         stroke="#FFFFFF"
-                        strokeWidth={1}
+                        strokeWidth={0.5}
                         onMouseEnter={() => {
                           if (value > 0) {
                             setTooltip({
-                              name: stateName,
+                              name: countyName,
                               value: value
                             });
                           }
