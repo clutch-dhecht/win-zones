@@ -23,14 +23,18 @@ const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasDa
     return Array.from(layersSet);
   }, [cityData, countyData, wheatData]);
 
-  // Create a color scale for each layer
+  // Create a color scale for each layer with better visibility for small values
   const layerColorScales = useMemo(() => {
     const scales = {};
     allLayerNames.forEach((layerName, idx) => {
       const color = LAYER_COLORS[idx % LAYER_COLORS.length];
+      // Use power scale for better visibility of small values
       scales[layerName] = {
         color: color,
-        scale: scaleLinear().range(['rgba(0,0,0,0)', color])
+        scale: scaleLinear()
+          .range(['rgba(0,0,0,0)', color])
+          // Apply square root scaling for better differentiation of small values
+          .clamp(true)
       };
     });
     return scales;
@@ -89,10 +93,11 @@ const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasDa
       });
     });
     
-    // Update scales with max values
+    // Update scales with max values - use sqrt for better small value visibility
     Object.keys(maxValues).forEach(layer => {
-      if (layerColorScales[layer]) {
-        layerColorScales[layer].scale.domain([0, maxValues[layer] || 1]);
+      if (layerColorScales[layer] && maxValues[layer] > 0) {
+        // Use square root of max value for better distribution
+        layerColorScales[layer].scale.domain([0, Math.sqrt(maxValues[layer])]);
       }
     });
     
@@ -130,15 +135,17 @@ const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasDa
         const value = countyDataByLayer[layer][key] || 0;
         if (value > 0) {
           const color = layerColorScales[layer]?.color || '#166534';
+          // Apply sqrt transformation for better visibility
+          const scaledValue = Math.sqrt(value);
           const hex = color.replace('#', '');
           const r = parseInt(hex.substr(0, 2), 16);
           const g = parseInt(hex.substr(2, 2), 16);
           const b = parseInt(hex.substr(4, 2), 16);
           
-          totalR += r * value;
-          totalG += g * value;
-          totalB += b * value;
-          totalWeight += value;
+          totalR += r * scaledValue;
+          totalG += g * scaledValue;
+          totalB += b * scaledValue;
+          totalWeight += scaledValue;
         }
       });
     });
