@@ -403,7 +403,11 @@ const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasDa
                   <span className="text-xs text-stone-600">Acres (base layer)</span>
                 </div>
               )}
-              {Object.keys(countyDataByLayer).map((layer, idx) => (
+              {Object.keys(countyDataByLayer).filter(layer => {
+                // Only show layers that have actual data
+                const hasData = Object.values(countyDataByLayer[layer] || {}).some(v => v > 0);
+                return hasData;
+              }).map((layer) => (
                 <div key={layer} className="flex items-center gap-2">
                   <div 
                     className="w-3 h-3 rounded-full" 
