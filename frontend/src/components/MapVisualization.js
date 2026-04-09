@@ -43,9 +43,9 @@ const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasDa
     
     [...countyData, ...(wheatData || [])].forEach(county => {
       if (county.layers['Acres'] && activeLayers['Acres']) {
-        const countyName = county.county.toUpperCase();
-        data[countyName] = county.layers['Acres'];
-        maxValue = Math.max(maxValue, data[countyName]);
+        const key = `${county.state}|${county.county.toUpperCase()}`;
+        data[key] = county.layers['Acres'];
+        maxValue = Math.max(maxValue, data[key]);
       }
     });
     
@@ -73,17 +73,18 @@ const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasDa
     });
     
     // Aggregate county-level data by layer (excluding Acres)
+    // Use state|county as key to avoid conflicts
     [...countyData, ...(wheatData || [])].forEach(county => {
-      const countyName = county.county.toUpperCase();
+      const key = `${county.state}|${county.county.toUpperCase()}`;
       
       Object.keys(county.layers).forEach((layer) => {
         if (activeLayers[layer] && layer !== 'Acres') {
-          if (!layerData[layer][countyName]) {
-            layerData[layer][countyName] = 0;
+          if (!layerData[layer][key]) {
+            layerData[layer][key] = 0;
           }
           const value = county.layers[layer];
-          layerData[layer][countyName] += value;
-          maxValues[layer] = Math.max(maxValues[layer], layerData[layer][countyName]);
+          layerData[layer][key] += value;
+          maxValues[layer] = Math.max(maxValues[layer], layerData[layer][key]);
         }
       });
     });
@@ -98,63 +99,84 @@ const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasDa
     return layerData;
   }, [countyData, wheatData, activeLayers, layerColorScales]);
 
-  // Get blended color for a county based on all active layers
+  // Create a lookup map from our data: county name -> list of states that have it
+  const countyToStatesMap = useMemo(() => {
+    const map = {};
+    [...countyData, ...(wheatData || [])].forEach(county => {
+      const countyName = county.county.toUpperCase();
+      if (!map[countyName]) {
+        map[countyName] = [];
+      }
+      if (!map[countyName].includes(county.state)) {
+        map[countyName].push(county.state);
+      }
+    });
+    return map;
+  }, [countyData, wheatData]);
+
+  // Get county color considering all states with that county name
   const getCountyColor = (countyName) => {
-    const activeLayers = Object.keys(countyDataByLayer).filter(layer => 
-      countyDataByLayer[layer][countyName] > 0
-    );
+    const states = countyToStatesMap[countyName] || [];
+    if (states.length === 0) return '#F5F5F4';
     
-    if (activeLayers.length === 0) return '#F5F5F4';
+    // Aggregate data from all states with this county name
+    let totalR = 0, totalG = 0, totalB = 0, totalWeight = 0;
     
-    // If only one layer, use its color
-    if (activeLayers.length === 1) {
-      const layer = activeLayers[0];
-      const value = countyDataByLayer[layer][countyName];
-      return layerColorScales[layer].scale(value);
-    }
-    
-    // Multiple layers: blend colors
-    let r = 0, g = 0, b = 0, totalWeight = 0;
-    
-    activeLayers.forEach(layer => {
-      const value = countyDataByLayer[layer][countyName];
-      const color = layerColorScales[layer].color;
-      const weight = value;
+    states.forEach(state => {
+      const key = `${state}|${countyName}`;
+      const activeLayerNames = Object.keys(countyDataByLayer);
       
-      // Parse hex color
-      const hex = color.replace('#', '');
-      const rVal = parseInt(hex.substr(0, 2), 16);
-      const gVal = parseInt(hex.substr(2, 2), 16);
-      const bVal = parseInt(hex.substr(4, 2), 16);
-      
-      r += rVal * weight;
-      g += gVal * weight;
-      b += bVal * weight;
-      totalWeight += weight;
+      activeLayerNames.forEach(layer => {
+        const value = countyDataByLayer[layer][key] || 0;
+        if (value > 0) {
+          const color = layerColorScales[layer]?.color || '#166534';
+          const hex = color.replace('#', '');
+          const r = parseInt(hex.substr(0, 2), 16);
+          const g = parseInt(hex.substr(2, 2), 16);
+          const b = parseInt(hex.substr(4, 2), 16);
+          
+          totalR += r * value;
+          totalG += g * value;
+          totalB += b * value;
+          totalWeight += value;
+        }
+      });
     });
     
     if (totalWeight > 0) {
-      r = Math.round(r / totalWeight);
-      g = Math.round(g / totalWeight);
-      b = Math.round(b / totalWeight);
+      const r = Math.round(totalR / totalWeight);
+      const g = Math.round(totalG / totalWeight);
+      const b = Math.round(totalB / totalWeight);
       return `rgb(${r}, ${g}, ${b})`;
     }
     
     return '#F5F5F4';
   };
 
-  // Calculate total for tooltip (excluding Acres)
+  // Calculate total for tooltip (all states with this county name)
   const getCountyTotal = (countyName) => {
     let total = 0;
     let breakdown = {};
-    Object.keys(countyDataByLayer).forEach(layer => {
-      const value = countyDataByLayer[layer][countyName] || 0;
-      if (value > 0) {
-        total += value;
-        breakdown[layer] = value;
-      }
+    let statesList = [];
+    
+    const states = countyToStatesMap[countyName] || [];
+    states.forEach(state => {
+      const key = `${state}|${countyName}`;
+      statesList.push(state);
+      
+      Object.keys(countyDataByLayer).forEach(layer => {
+        const value = countyDataByLayer[layer][key] || 0;
+        if (value > 0) {
+          total += value;
+          if (!breakdown[layer]) {
+            breakdown[layer] = 0;
+          }
+          breakdown[layer] += value;
+        }
+      });
     });
-    return { total, breakdown };
+    
+    return { total, breakdown, states: statesList };
   };
 
   // Process city data for markers with individual colors per layer
@@ -243,7 +265,14 @@ const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasDa
                   {({ geographies }) =>
                     geographies.map(geo => {
                       const countyName = (geo.properties.name || '').toUpperCase();
-                      const acresValue = acresData.data[countyName] || 0;
+                      const states = countyToStatesMap[countyName] || [];
+                      
+                      // Aggregate acres from all states with this county name
+                      let acresValue = 0;
+                      states.forEach(state => {
+                        const key = `${state}|${countyName}`;
+                        acresValue += acresData.data[key] || 0;
+                      });
                       
                       return (
                         <Geography
@@ -280,8 +309,13 @@ const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasDa
                         strokeWidth={0.3}
                         onMouseEnter={() => {
                           if (countyInfo.total > 0) {
+                            // Show county name with states if multiple
+                            const displayName = countyInfo.states.length > 1 
+                              ? `${countyName} (${countyInfo.states.join(', ')})`
+                              : `${countyName}, ${countyInfo.states[0]}`;
+                            
                             setTooltip({
-                              name: countyName,
+                              name: displayName,
                               value: countyInfo.total,
                               breakdown: countyInfo.breakdown
                             });
