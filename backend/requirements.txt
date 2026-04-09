@@ -25,6 +25,7 @@ filelock==3.25.2
 flake8==7.3.0
 frozenlist==1.8.0
 fsspec==2026.3.0
+geographiclib==2.1
 google-ai-generativelanguage==0.6.15
 google-api-core==2.30.2
 google-api-python-client==2.194.0
@@ -118,6 +119,7 @@ uritemplate==4.2.0
 urllib3==2.6.3
 uvicorn==0.25.0
 watchfiles==1.1.1
+wcwidth==0.6.0
 websockets==16.0
 yarl==1.23.0
 zipp==3.23.0

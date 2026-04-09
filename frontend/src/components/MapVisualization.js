@@ -175,7 +175,7 @@ const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasDa
         }
       });
       
-      if (total > 0) {
+      if (total > 0 && activeCityLayers.length > 0) {
         // Determine marker color based on dominant layer
         let dominantLayer = activeCityLayers.sort((a, b) => b.value - a.value)[0];
         const layerIndex = allLayerNames.indexOf(dominantLayer.layer);
@@ -323,31 +323,36 @@ const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasDa
               </Geographies>
 
               {/* City Markers with per-layer colors */}
-              {cityMarkers.map((marker, idx) => (
-                <Marker
-                  key={`${marker.city}-${idx}`}
-                  coordinates={marker.coordinates}
-                  onMouseEnter={() => {
-                    setTooltip({
-                      name: `${marker.city}, ${marker.state}`,
-                      value: marker.value,
-                      layers: marker.layers,
-                      dominantLayer: marker.dominantLayer
-                    });
-                  }}
-                  onMouseLeave={() => setTooltip(null)}
-                >
-                  <circle
-                    r={getMarkerSize(marker.value)}
-                    fill={marker.color}
-                    fillOpacity={0.8}
-                    stroke="#FFFFFF"
-                    strokeWidth={1.5}
-                    style={{ cursor: 'pointer' }}
-                    data-testid={`city-marker-${idx}`}
-                  />
-                </Marker>
-              ))}
+              {cityMarkers && cityMarkers.length > 0 && cityMarkers.map((marker, idx) => {
+                if (!marker.coordinates || marker.coordinates.length !== 2) {
+                  return null;
+                }
+                return (
+                  <Marker
+                    key={`${marker.city}-${idx}`}
+                    coordinates={marker.coordinates}
+                    onMouseEnter={() => {
+                      setTooltip({
+                        name: `${marker.city}, ${marker.state}`,
+                        value: marker.value,
+                        layers: marker.layers,
+                        dominantLayer: marker.dominantLayer
+                      });
+                    }}
+                    onMouseLeave={() => setTooltip(null)}
+                  >
+                    <circle
+                      r={getMarkerSize(marker.value)}
+                      fill={marker.color}
+                      fillOpacity={0.8}
+                      stroke="#FFFFFF"
+                      strokeWidth={1.5}
+                      style={{ cursor: 'pointer' }}
+                      data-testid={`city-marker-${idx}`}
+                    />
+                  </Marker>
+                );
+              })}
             </ZoomableGroup>
           </ComposableMap>
 

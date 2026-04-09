@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime, timezone
 import pandas as pd
 import io
-from us_cities_data import geocode_city, is_us_state
+from us_cities_data import is_us_state
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -22,6 +22,14 @@ db = client[os.environ['DB_NAME']]
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
+
+# Load comprehensive US cities database
+US_CITIES_DF = pd.read_csv(ROOT_DIR / 'us_cities_coordinates.csv')
+US_CITIES_DF['CITY_UPPER'] = US_CITIES_DF['CITY'].str.upper()
+US_CITIES_DF['STATE_UPPER'] = US_CITIES_DF['STATE_NAME'].str.upper()
+
+# Cache for geocoded cities
+geocode_cache = {}
 
 class StatusCheck(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -67,7 +75,93 @@ async def get_status_checks():
             check['timestamp'] = datetime.fromisoformat(check['timestamp'])
     return status_checks
 
+def geocode_city_advanced(city, state):
+    """Enhanced geocoding using comprehensive US cities database"""
+    cache_key = f"{city.upper()},{state.upper()}"
+    
+    # Check cache first
+    if cache_key in geocode_cache:
+        return geocode_cache[cache_key]
+    
+    city_upper = city.upper().strip()
+    state_upper = state.upper().strip()
+    
+    # Try exact match on city and state
+    matches = US_CITIES_DF[
+        (US_CITIES_DF['CITY_UPPER'] == city_upper) & 
+        (US_CITIES_DF['STATE_UPPER'] == state_upper)
+    ]
+    
+    if not matches.empty:
+        row = matches.iloc[0]
+        coords = {'lat': float(row['LATITUDE']), 'lon': float(row['LONGITUDE'])}
+        geocode_cache[cache_key] = coords
+        return coords
+    
+    # Try without exact state match (in case state name is different format)
+    matches = US_CITIES_DF[US_CITIES_DF['CITY_UPPER'] == city_upper]
+    if not matches.empty:
+        row = matches.iloc[0]
+        coords = {'lat': float(row['LATITUDE']), 'lon': float(row['LONGITUDE'])}
+        geocode_cache[cache_key] = coords
+        return coords
+    
+    geocode_cache[cache_key] = None
+    return None
+
 @api_router.post("/upload/city")
+async def upload_city_data(file: UploadFile = File(...)):
+    """Upload and process city-level CSV data"""
+    try:
+        contents = await file.read()
+        df = pd.read_csv(io.BytesIO(contents))
+        
+        if 'State' not in df.columns or 'City' not in df.columns:
+            raise HTTPException(status_code=400, detail="CSV must have 'State' and 'City' columns")
+        
+        # Filter to US states only
+        df = df[df['State'].apply(is_us_state)]
+        
+        # Get layer columns
+        layer_columns = [col for col in df.columns if col not in ['State', 'City']]
+        
+        processed_data = []
+        skipped_count = 0
+        
+        for idx, row in df.iterrows():
+            geo = geocode_city_advanced(row['City'], row['State'])
+            if geo:
+                layers = {col: int(row[col]) if pd.notna(row[col]) else 0 for col in layer_columns}
+                processed_data.append({
+                    'state': row['State'],
+                    'city': row['City'],
+                    'lat': geo['lat'],
+                    'lon': geo['lon'],
+                    'layers': layers
+                })
+            else:
+                skipped_count += 1
+            
+            # Progress logging every 50 cities
+            if (idx + 1) % 50 == 0:
+                logging.info(f"Geocoding progress: {idx + 1}/{len(df)} cities, {len(processed_data)} successful")
+        
+        # Store in MongoDB
+        await db.city_data.delete_many({})
+        if processed_data:
+            await db.city_data.insert_many(processed_data)
+        
+        logging.info(f"City upload complete: {len(processed_data)} geocoded, {skipped_count} skipped")
+        
+        return {
+            "success": True,
+            "processed": len(processed_data),
+            "skipped": skipped_count,
+            "layers": layer_columns
+        }
+    except Exception as e:
+        logging.error(f"Error processing city data: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 async def upload_city_data(file: UploadFile = File(...)):
     """Upload and process city-level CSV data"""
     try:
