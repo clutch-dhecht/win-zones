@@ -1,0 +1,76 @@
+{
+  "theme": "Light",
+  "archetype": "Archetype 1: Organic & Earthy",
+  "reasoning": "The application visualizes agricultural sales territory data (Feed Mills, Hog Producers, Grain, Growers). A light, earthy theme establishes trust and aligns with the natural/agricultural domain, while maintaining the structural clarity necessary for a data-dense control room dashboard.",
+  "colors": {
+    "background": "#F5F5F4",
+    "surface": "#FFFFFF",
+    "text_primary": "#1C1917",
+    "text_secondary": "#78716C",
+    "border": "#E7E5E4",
+    "primary": "#166534",
+    "primary_hover": "#14532D",
+    "layer_colors": {
+      "city_1": "#B45309",
+      "city_2": "#9F1239",
+      "city_3": "#15803D",
+      "city_4": "#0369A1",
+      "county_1": "#F59E0B",
+      "county_2": "#84CC16",
+      "county_3": "#14B8A6"
+    }
+  },
+  "typography": {
+    "headings": "Manrope",
+    "body": "IBM Plex Sans",
+    "hierarchy": {
+      "h1": "text-4xl tracking-tight font-bold",
+      "h2": "text-2xl tracking-tight font-semibold",
+      "h3": "text-lg font-medium",
+      "body": "text-sm leading-relaxed",
+      "labels": "text-xs tracking-[0.05em] uppercase font-semibold text-stone-500"
+    }
+  },
+  "layout": {
+    "strategy": "The Control Room Grid",
+    "description": "Dense, full-height application layout. A rigid grid dividing controls and visualization.",
+    "structure": {
+      "container": "h-screen w-full flex flex-col md:flex-row bg-stone-100 overflow-hidden",
+      "sidebar": "w-full md:w-80 lg:w-96 flex-shrink-0 border-r border-stone-200 bg-white h-full flex flex-col z-10 shadow-sm",
+      "main_area": "flex-grow relative h-full bg-stone-50 flex flex-col"
+    },
+    "spacing": "Tight spacing for widgets (p-4 to p-6). Every pixel utilized.",
+    "surface_strategy": "Grid Borders (The 'Technical' Look). Use flat, crisp containers with 1px border-stone-200. Avoid soft shadows. Use sharp 4px or 8px border-radius maximum."
+  },
+  "components": {
+    "buttons": "Shadcn buttons. Flat, subtle hover states.",
+    "layer_toggles": "Shadcn Switch or Checkbox components aligned right in list items.",
+    "panels": "Shadcn ScrollArea for the sidebar content. Shadcn Accordion for grouping City vs County layers.",
+    "map": "react-simple-maps wrapper. SVG-based US map.",
+    "tooltips": "Shadcn Tooltip or custom absolute positioned div tied to cursor coordinates for map hover states."
+  },
+  "visual_enhancers": {
+    "map_styles": "Base map color: #E7E5E4. Stroke: #FFFFFF. Choropleth uses d3-scale to map data intensities to the opacity/shade of the county layer color. City layers use distinct colored circle markers with mix-blend-mode: multiply to highlight overlap regions.",
+    "empty_state": "When no data is uploaded, display an empty state covering the map area. Use the provided aerial landscape image as a highly faded background (opacity 10%) with an upload CTA in the center."
+  },
+  "media": {
+    "image_urls": [
+      {
+        "url": "https://images.unsplash.com/photo-1526452292898-227ed70e55b5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTF8MHwxfHNlYXJjaHwxfHxhZXJpYWwlMjBmYXJtJTIwbGFuZHNjYXBlJTIwbWluaW1hbHxlbnwwfHx8fDE3NzU3NDU3MTh8MA&ixlib=rb-4.1.0&q=85",
+        "category": "empty_state_background",
+        "description": "Minimal aerial view of a farm/trees. Use as a blurred, low-opacity background behind the initial file upload dropzone."
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Install required dependencies: yarn add react-simple-maps topojson-client d3-scale papaparse xlsx @phosphor-icons/react lucide-react",
+    "Use papaparse to parse uploaded CSVs, and xlsx to parse XLSX files. Handle the file drop locally.",
+    "For the US map, use a standard US TopoJSON URL (e.g., https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json) with react-simple-maps.",
+    "Implement the map such that County data affects the `fill` color of `<Geography>` paths (using d3-scale for color intensity based on counts).",
+    "Implement the City data as `<Marker>` components over the map, scaling radius by count size or utilizing distinct colors per layer.",
+    "Apply `mix-blend-mode: multiply` on marker dots so overlap zones naturally darken/highlight 'win zones'.",
+    "Ensure all toggle switches and layer states are managed centrally, and the map recalculates and re-renders dynamically.",
+    "Include a 'Top Zones' or 'Analytics' card in the sidebar that identifies which states or counties have the highest combined opportunity based on active layers.",
+    "Add 'data-testid' attributes to all checkboxes, file inputs, and major UI components."
+  ]
+}
