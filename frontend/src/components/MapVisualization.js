@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup } from 'react-simple-maps';
 import { scaleLinear } from 'd3-scale';
 
-const geoUrl = 'https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json';
+const geoUrl = 'https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json';
 
 const LAYER_COLORS = {
   city_0: '#B45309',
@@ -17,41 +17,55 @@ const LAYER_COLORS = {
 const MapVisualization = ({ cityData, countyData, activeLayers, hasData }) => {
   const [tooltip, setTooltip] = useState(null);
 
-  // Process county data for choropleth
-  const countyTotals = useMemo(() => {
+  // Process county data for state-level choropleth aggregation
+  const stateTotals = useMemo(() => {
     const totals = {};
     
+    // Aggregate county data by state
     countyData.forEach(county => {
-      const key = `${county.state}-${county.county}`;
-      let total = 0;
+      const state = county.state;
+      if (!totals[state]) {
+        totals[state] = 0;
+      }
       
-      Object.keys(county.layers).forEach((layer, idx) => {
+      Object.keys(county.layers).forEach((layer) => {
         const layerKey = `county_${layer}`;
         if (activeLayers[layerKey]) {
-          total += county.layers[layer];
+          totals[state] += county.layers[layer];
         }
       });
-      
-      if (total > 0) {
-        totals[key] = total;
+    });
+    
+    // Add city data aggregation by state
+    cityData.forEach(city => {
+      const state = city.state;
+      if (!totals[state]) {
+        totals[state] = 0;
       }
+      
+      Object.keys(city.layers).forEach((layer) => {
+        const layerKey = `city_${layer}`;
+        if (activeLayers[layerKey]) {
+          totals[state] += city.layers[layer];
+        }
+      });
     });
     
     return totals;
-  }, [countyData, activeLayers]);
+  }, [countyData, cityData, activeLayers]);
 
   // Get max value for scaling
-  const maxCountyValue = useMemo(() => {
-    const values = Object.values(countyTotals);
+  const maxStateValue = useMemo(() => {
+    const values = Object.values(stateTotals);
     return values.length > 0 ? Math.max(...values) : 1;
-  }, [countyTotals]);
+  }, [stateTotals]);
 
-  // Color scale for counties
+  // Color scale for states
   const colorScale = useMemo(() => {
     return scaleLinear()
-      .domain([0, maxCountyValue])
-      .range(['#E7E5E4', '#166534']);
-  }, [maxCountyValue]);
+      .domain([0, maxStateValue])
+      .range(['#F5F5F4', '#166534']);
+  }, [maxStateValue]);
 
   // Process city data for markers
   const cityMarkers = useMemo(() => {
@@ -129,21 +143,19 @@ const MapVisualization = ({ cityData, countyData, activeLayers, hasData }) => {
                 {({ geographies }) =>
                   geographies.map(geo => {
                     const stateName = geo.properties.name;
-                    const countyName = geo.properties.name;
-                    const key = `${stateName}-${countyName}`;
-                    const value = countyTotals[key] || 0;
+                    const value = stateTotals[stateName] || 0;
                     
                     return (
                       <Geography
                         key={geo.rsmKey}
                         geography={geo}
-                        fill={value > 0 ? colorScale(value) : '#E7E5E4'}
+                        fill={value > 0 ? colorScale(value) : '#F5F5F4'}
                         stroke="#FFFFFF"
-                        strokeWidth={0.5}
+                        strokeWidth={1}
                         onMouseEnter={() => {
                           if (value > 0) {
                             setTooltip({
-                              name: countyName,
+                              name: stateName,
                               value: value
                             });
                           }
@@ -151,7 +163,7 @@ const MapVisualization = ({ cityData, countyData, activeLayers, hasData }) => {
                         onMouseLeave={() => setTooltip(null)}
                         style={{
                           default: { outline: 'none' },
-                          hover: { fill: value > 0 ? '#14532D' : '#E7E5E4', outline: 'none' },
+                          hover: { fill: value > 0 ? '#14532D' : '#F5F5F4', outline: 'none' },
                           pressed: { outline: 'none' }
                         }}
                       />
@@ -212,8 +224,12 @@ const MapVisualization = ({ cityData, countyData, activeLayers, hasData }) => {
             <div className="text-xs font-semibold text-stone-700 mb-2">Legend</div>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded" style={{ backgroundColor: '#E7E5E4' }} />
+                <div className="w-4 h-4 rounded" style={{ backgroundColor: '#F5F5F4' }} />
                 <span className="text-xs text-stone-600">No data</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded" style={{ backgroundColor: '#84CC16' }} />
+                <span className="text-xs text-stone-600">Medium activity</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 rounded" style={{ backgroundColor: '#166534' }} />
