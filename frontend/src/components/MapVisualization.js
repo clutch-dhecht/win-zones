@@ -2,57 +2,137 @@ import React, { useMemo, useState } from 'react';
 import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup } from 'react-simple-maps';
 import { scaleLinear } from 'd3-scale';
 
-const geoUrl = 'https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json';
+const countiesGeoUrl = 'https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json';
+const statesGeoUrl = 'https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json';
 
-const LAYER_COLORS = {
-  city_0: '#B45309',
-  city_1: '#9F1239',
-  city_2: '#15803D',
-  city_3: '#0369A1',
-  county_0: '#F59E0B',
-  county_1: '#84CC16',
-  county_2: '#14B8A6'
-};
+const LAYER_COLORS = [
+  '#B45309', '#9F1239', '#15803D', '#0369A1',
+  '#F59E0B', '#84CC16', '#14B8A6', '#7C3AED',
+  '#DB2777', '#059669', '#2563EB', '#DC2626'
+];
 
 const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasData }) => {
   const [tooltip, setTooltip] = useState(null);
 
-  // Process county data for county-level choropleth
-  const countyTotals = useMemo(() => {
-    const totals = {};
+  // Get all unique layer names in order
+  const allLayerNames = useMemo(() => {
+    const layersSet = new Set();
+    [...cityData, ...countyData, ...(wheatData || [])].forEach(item => {
+      Object.keys(item.layers).forEach(layer => layersSet.add(layer));
+    });
+    return Array.from(layersSet);
+  }, [cityData, countyData, wheatData]);
+
+  // Create a color scale for each layer
+  const layerColorScales = useMemo(() => {
+    const scales = {};
+    allLayerNames.forEach((layerName, idx) => {
+      const color = LAYER_COLORS[idx % LAYER_COLORS.length];
+      scales[layerName] = {
+        color: color,
+        scale: scaleLinear().range(['rgba(0,0,0,0)', color])
+      };
+    });
+    return scales;
+  }, [allLayerNames]);
+
+  // Process county data by layer for multi-color visualization
+  const countyDataByLayer = useMemo(() => {
+    const layerData = {};
+    const maxValues = {};
     
-    // Aggregate all county-level data
+    // Initialize
+    Object.keys(activeLayers).forEach(layerName => {
+      if (activeLayers[layerName]) {
+        layerData[layerName] = {};
+        maxValues[layerName] = 0;
+      }
+    });
+    
+    // Aggregate county-level data by layer
     [...countyData, ...(wheatData || [])].forEach(county => {
       const countyName = county.county.toUpperCase();
-      const key = countyName; // Just use county name as key
-      
-      if (!totals[key]) {
-        totals[key] = 0;
-      }
       
       Object.keys(county.layers).forEach((layer) => {
-        const layerKey = layer; // Direct layer name
-        if (activeLayers[layerKey]) {
-          totals[key] += county.layers[layer];
+        if (activeLayers[layer]) {
+          if (!layerData[layer][countyName]) {
+            layerData[layer][countyName] = 0;
+          }
+          const value = county.layers[layer];
+          layerData[layer][countyName] += value;
+          maxValues[layer] = Math.max(maxValues[layer], layerData[layer][countyName]);
         }
       });
     });
     
-    return totals;
-  }, [countyData, wheatData, activeLayers]);
+    // Update scales with max values
+    Object.keys(maxValues).forEach(layer => {
+      if (layerColorScales[layer]) {
+        layerColorScales[layer].scale.domain([0, maxValues[layer] || 1]);
+      }
+    });
+    
+    return layerData;
+  }, [countyData, wheatData, activeLayers, layerColorScales]);
 
-  // Get max value for scaling
-  const maxCountyValue = useMemo(() => {
-    const values = Object.values(countyTotals);
-    return values.length > 0 ? Math.max(...values) : 1;
-  }, [countyTotals]);
+  // Get blended color for a county based on all active layers
+  const getCountyColor = (countyName) => {
+    const activeLayers = Object.keys(countyDataByLayer).filter(layer => 
+      countyDataByLayer[layer][countyName] > 0
+    );
+    
+    if (activeLayers.length === 0) return '#F5F5F4';
+    
+    // If only one layer, use its color
+    if (activeLayers.length === 1) {
+      const layer = activeLayers[0];
+      const value = countyDataByLayer[layer][countyName];
+      return layerColorScales[layer].scale(value);
+    }
+    
+    // Multiple layers: blend colors
+    let r = 0, g = 0, b = 0, totalWeight = 0;
+    
+    activeLayers.forEach(layer => {
+      const value = countyDataByLayer[layer][countyName];
+      const color = layerColorScales[layer].color;
+      const weight = value;
+      
+      // Parse hex color
+      const hex = color.replace('#', '');
+      const rVal = parseInt(hex.substr(0, 2), 16);
+      const gVal = parseInt(hex.substr(2, 2), 16);
+      const bVal = parseInt(hex.substr(4, 2), 16);
+      
+      r += rVal * weight;
+      g += gVal * weight;
+      b += bVal * weight;
+      totalWeight += weight;
+    });
+    
+    if (totalWeight > 0) {
+      r = Math.round(r / totalWeight);
+      g = Math.round(g / totalWeight);
+      b = Math.round(b / totalWeight);
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+    
+    return '#F5F5F4';
+  };
 
-  // Color scale for counties
-  const colorScale = useMemo(() => {
-    return scaleLinear()
-      .domain([0, maxCountyValue])
-      .range(['#F5F5F4', '#166534']);
-  }, [maxCountyValue]);
+  // Calculate total for tooltip
+  const getCountyTotal = (countyName) => {
+    let total = 0;
+    let breakdown = {};
+    Object.keys(countyDataByLayer).forEach(layer => {
+      const value = countyDataByLayer[layer][countyName] || 0;
+      if (value > 0) {
+        total += value;
+        breakdown[layer] = value;
+      }
+    });
+    return { total, breakdown };
+  };
 
   // Process city data for markers
   const cityMarkers = useMemo(() => {
@@ -60,13 +140,10 @@ const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasDa
     
     cityData.forEach(city => {
       let total = 0;
-      let activeLayerCount = 0;
       
       Object.keys(city.layers).forEach((layer) => {
-        const layerKey = layer; // Direct layer name
-        if (activeLayers[layerKey]) {
+        if (activeLayers[layer]) {
           total += city.layers[layer];
-          activeLayerCount++;
         }
       });
       
@@ -84,7 +161,6 @@ const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasDa
     return markers;
   }, [cityData, activeLayers]);
 
-  // Get max city value for marker sizing
   const maxCityValue = useMemo(() => {
     const values = cityMarkers.map(m => m.value);
     return values.length > 0 ? Math.max(...values) : 1;
@@ -126,36 +202,62 @@ const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasDa
             data-testid="map-svg"
           >
             <ZoomableGroup zoom={1} center={[-97, 38]}>
-              <Geographies geography={geoUrl}>
+              {/* Counties layer with per-layer coloring */}
+              <Geographies geography={countiesGeoUrl}>
                 {({ geographies }) =>
                   geographies.map(geo => {
                     const countyName = (geo.properties.name || '').toUpperCase();
-                    const value = countyTotals[countyName] || 0;
+                    const countyInfo = getCountyTotal(countyName);
+                    const fillColor = getCountyColor(countyName);
                     
                     return (
                       <Geography
                         key={geo.rsmKey}
                         geography={geo}
-                        fill={value > 0 ? colorScale(value) : '#F5F5F4'}
+                        fill={fillColor}
                         stroke="#FFFFFF"
-                        strokeWidth={0.5}
+                        strokeWidth={0.3}
                         onMouseEnter={() => {
-                          if (value > 0) {
+                          if (countyInfo.total > 0) {
                             setTooltip({
                               name: countyName,
-                              value: value
+                              value: countyInfo.total,
+                              breakdown: countyInfo.breakdown
                             });
                           }
                         }}
                         onMouseLeave={() => setTooltip(null)}
                         style={{
                           default: { outline: 'none' },
-                          hover: { fill: value > 0 ? '#14532D' : '#F5F5F4', outline: 'none' },
+                          hover: { 
+                            fill: countyInfo.total > 0 ? '#14532D' : fillColor, 
+                            outline: 'none' 
+                          },
                           pressed: { outline: 'none' }
                         }}
                       />
                     );
                   })
+                }
+              </Geographies>
+
+              {/* State borders overlay - thick dark lines */}
+              <Geographies geography={statesGeoUrl}>
+                {({ geographies }) =>
+                  geographies.map(geo => (
+                    <Geography
+                      key={`state-${geo.rsmKey}`}
+                      geography={geo}
+                      fill="none"
+                      stroke="#1C1917"
+                      strokeWidth={1.5}
+                      style={{
+                        default: { outline: 'none' },
+                        hover: { outline: 'none' },
+                        pressed: { outline: 'none' }
+                      }}
+                    />
+                  ))
                 }
               </Geographies>
 
@@ -190,13 +292,23 @@ const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasDa
           {/* Tooltip */}
           {tooltip && (
             <div
-              className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-white border border-stone-200 rounded shadow-lg p-3 z-20"
+              className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-white border border-stone-200 rounded shadow-lg p-3 z-20 max-w-xs"
               style={{ pointerEvents: 'none' }}
               data-testid="map-tooltip"
             >
               <div className="text-sm font-semibold text-stone-900">{tooltip.name}</div>
-              <div className="text-xs text-stone-600">Total: {tooltip.value.toLocaleString()}</div>
-              {tooltip.layers && (
+              <div className="text-xs text-stone-600 mt-1">Total: {tooltip.value.toLocaleString()}</div>
+              {tooltip.breakdown && (
+                <div className="mt-2 space-y-1">
+                  {Object.entries(tooltip.breakdown).map(([layer, value]) => (
+                    <div key={layer} className="text-xs text-stone-500 flex justify-between gap-2">
+                      <span>{layer}:</span>
+                      <span className="font-medium">{value.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {tooltip.layers && !tooltip.breakdown && (
                 <div className="mt-1 text-xs text-stone-500">
                   {Object.entries(tooltip.layers).map(([layer, value]) => (
                     <div key={layer}>{layer}: {value}</div>
@@ -208,24 +320,23 @@ const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasDa
 
           {/* Legend */}
           <div className="absolute top-4 right-4 bg-white border border-stone-200 rounded shadow-sm p-3" data-testid="map-legend">
-            <div className="text-xs font-semibold text-stone-700 mb-2">Legend</div>
+            <div className="text-xs font-semibold text-stone-700 mb-2">Active Layers</div>
             <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded" style={{ backgroundColor: '#F5F5F4' }} />
-                <span className="text-xs text-stone-600">No data</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded" style={{ backgroundColor: '#84CC16' }} />
-                <span className="text-xs text-stone-600">Medium activity</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded" style={{ backgroundColor: '#166534' }} />
-                <span className="text-xs text-stone-600">High activity</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#B45309' }} />
-                <span className="text-xs text-stone-600">City markers</span>
-              </div>
+              {Object.keys(countyDataByLayer).map((layer, idx) => (
+                <div key={layer} className="flex items-center gap-2">
+                  <div 
+                    className="w-3 h-3 rounded-full" 
+                    style={{ backgroundColor: layerColorScales[layer]?.color || '#166534' }} 
+                  />
+                  <span className="text-xs text-stone-600">{layer}</span>
+                </div>
+              ))}
+              {cityMarkers.length > 0 && (
+                <div className="flex items-center gap-2 pt-1 border-t border-stone-200 mt-1">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#B45309' }} />
+                  <span className="text-xs text-stone-600">City markers</span>
+                </div>
+              )}
             </div>
           </div>
         </>
