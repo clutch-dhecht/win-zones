@@ -322,8 +322,8 @@ const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasDa
                 }
               </Geographies>
 
-              {/* City Markers with per-layer colors */}
-              {cityMarkers && cityMarkers.length > 0 && cityMarkers.map((marker, idx) => {
+              {/* City Markers with per-layer colors - temporarily disabled for debugging */}
+              {false && cityMarkers && cityMarkers.length > 0 && cityMarkers.map((marker, idx) => {
                 if (!marker.coordinates || marker.coordinates.length !== 2) {
                   return null;
                 }
@@ -400,10 +400,10 @@ const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasDa
                   <span className="text-xs text-stone-600">{layer}</span>
                 </div>
               ))}
-              {cityMarkers.length > 0 && (
+              {cityMarkers && cityMarkers.length > 0 && (
                 <div className="pt-1 border-t border-stone-200 mt-1">
                   <div className="text-xs text-stone-500 mb-1">City markers:</div>
-                  {Array.from(new Set(cityMarkers.map(m => m.dominantLayer))).map(layer => {
+                  {Array.from(new Set(cityMarkers.filter(m => m.dominantLayer).map(m => m.dominantLayer))).map(layer => {
                     const layerIndex = allLayerNames.indexOf(layer);
                     const color = LAYER_COLORS[layerIndex % LAYER_COLORS.length];
                     return (
