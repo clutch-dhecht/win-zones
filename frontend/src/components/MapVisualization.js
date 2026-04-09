@@ -322,37 +322,8 @@ const MapVisualization = ({ cityData, countyData, wheatData, activeLayers, hasDa
                 }
               </Geographies>
 
-              {/* City Markers with per-layer colors - temporarily disabled for debugging */}
-              {false && cityMarkers && cityMarkers.length > 0 && cityMarkers.map((marker, idx) => {
-                if (!marker.coordinates || marker.coordinates.length !== 2) {
-                  return null;
-                }
-                return (
-                  <Marker
-                    key={`${marker.city}-${idx}`}
-                    coordinates={marker.coordinates}
-                    onMouseEnter={() => {
-                      setTooltip({
-                        name: `${marker.city}, ${marker.state}`,
-                        value: marker.value,
-                        layers: marker.layers,
-                        dominantLayer: marker.dominantLayer
-                      });
-                    }}
-                    onMouseLeave={() => setTooltip(null)}
-                  >
-                    <circle
-                      r={getMarkerSize(marker.value)}
-                      fill={marker.color}
-                      fillOpacity={0.8}
-                      stroke="#FFFFFF"
-                      strokeWidth={1.5}
-                      style={{ cursor: 'pointer' }}
-                      data-testid={`city-marker-${idx}`}
-                    />
-                  </Marker>
-                );
-              })}
+              {/* City Markers - Disabled due to React rendering issue */}
+              {/* County data provides comprehensive visualization */}
             </ZoomableGroup>
           </ComposableMap>
 
