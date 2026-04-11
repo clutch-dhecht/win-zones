@@ -1,0 +1,92 @@
+{
+  "summary": "Completed comprehensive testing of Territory Atlas iteration 3 - sidebar redesign, color picker, hover tooltips, and layer controls. All backend APIs (7/7 tests passed). Frontend features mostly working with one bug fixed (switch toggle double-click issue). All new features verified: file upload dropdown, layer groups, color picker, hover tooltips, radius controls, map style toggle.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "LayerControls.js",
+        "issue": "Switch toggle was double-firing due to both row onClick and Switch onCheckedChange handlers - FIXED by adding stopPropagation wrapper",
+        "selector": "[data-testid='layer-toggle-*']",
+        "priority": "MEDIUM",
+        "status": "FIXED"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Backend: GET /api/ returns welcome message (PASS)",
+    "Backend: GET /api/data/city returns 525+ city records with proper structure (PASS)",
+    "Backend: GET /api/data/county returns 1859+ county records (PASS)",
+    "Backend: GET /api/data/wheat returns wheat data with Acres layer (PASS)",
+    "Backend: GET /api/analytics/top-zones returns aggregated top states (PASS)",
+    "Backend: Analytics with layer filter works (PASS)",
+    "Backend: Data integrity - all datasets have records (PASS)",
+    "Frontend: File type selector dropdown visible with City/County/Wheat options (PASS)",
+    "Frontend: Upload button label changes based on selected type (PASS)",
+    "Frontend: Layer controls grouped in 'Point Layers' (4 layers) and 'Density Layers' (4 layers) (PASS)",
+    "Frontend: Collapsible layer groups show/hide on click with active count (e.g., 4/4) (PASS)",
+    "Frontend: Switch toggle turns layers on/off and changes map visibility (PASS - after fix)",
+    "Frontend: Inactive layers appear at reduced opacity (opacity-40) (PASS - after fix)",
+    "Frontend: Color picker dot opens popover with 15 preset colors (PASS)",
+    "Frontend: Changing layer color updates map choropleth (PASS - tested Acres to red)",
+    "Frontend: Radius sub-controls appear for Feed Mills, Grain Fumigation, Customers when active (PASS)",
+    "Frontend: Radius 25mi/50mi/100mi buttons visible and clickable (PASS)",
+    "Frontend: Hover tooltip appears on counties showing county/state/total (PASS - 'Buffalo Co., Nebraska — Total: 1,816')",
+    "Frontend: Click popup appears on counties showing detailed breakdown (PASS - Dickinson County, Kansas)",
+    "Frontend: County choropleth correctly shading with FIPS-normalized matching (PASS)",
+    "Frontend: Mapbox map renders properly with all data (PASS)",
+    "Frontend: Satellite/Street view toggle works (PASS)",
+    "Frontend: Analytics panel shows top states with correct data (PASS - Kansas #1 with 6.6M)"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_territory_atlas_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Fixed: LayerControls.js - Switch click was propagating to parent row causing double-toggle. Added stopPropagation wrapper around Switch component."
+  ],
+  "updated_files": [
+    "/app/frontend/src/components/LayerControls.js"
+  ],
+  "success_rate": {
+    "backend": "100% (7/7 tests passed)",
+    "frontend": "100% (all features verified after fix)"
+  },
+  "test_credentials": "No authentication required. Mapbox token configured in .env",
+  "seed_data_creation": "Data already loaded in MongoDB from previous session - 525 city records, 1859 county records, wheat data with Acres layer",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All features working. Bug fixed in LayerControls.js (switch toggle stopPropagation). Key data-testids: file-type-selector, upload-file-button, layer-group-Point Layers, layer-group-Density Layers, layer-toggle-{name}, layer-item-{name}, color-picker-{name}, radius-toggle-{name}, radius-miles-{name}-{miles}, hover-tooltip, map-popup, map-style-toggle, analytics-panel, top-zone-{n}. Mapbox needs 5 seconds to load.",
+  "features_verified": {
+    "sidebar_redesign": {
+      "file_upload_dropdown": "Single dropdown with City/County/Wheat options",
+      "upload_button": "Dynamic label based on selected type",
+      "layer_groups": "Point Layers (4) and Density Layers (4) with collapsible headers",
+      "active_count": "Shows X/Y format in group header"
+    },
+    "layer_controls": {
+      "switch_toggle": "Works correctly after fix",
+      "inactive_opacity": "opacity-40 class applied when layer is off",
+      "color_picker": "15 preset colors in popover",
+      "radius_controls": "Visible for Feed Mills, Grain Fumigation, Customers"
+    },
+    "map_features": {
+      "hover_tooltip": "Dark tooltip near cursor showing county/state/total",
+      "click_popup": "Detailed breakdown popup on click",
+      "choropleth": "County shading with FIPS normalization",
+      "dynamic_colors": "Layer colors update map in real-time"
+    }
+  },
+  "bug_fixed": {
+    "issue": "Switch toggle in LayerControls was not working - clicking switch caused no state change",
+    "root_cause": "Both the parent row onClick and Switch onCheckedChange were calling onToggle, causing double-toggle (on->off->on = no change)",
+    "fix": "Wrapped Switch in a div with onClick={(e) => e.stopPropagation()} to prevent event bubbling",
+    "file": "/app/frontend/src/components/LayerControls.js",
+    "line": "57-63"
+  }
+}
