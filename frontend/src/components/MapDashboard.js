@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import FileUpload from './FileUpload';
 import MapboxVisualization from './MapboxVisualization';
@@ -133,7 +133,7 @@ const MapDashboard = ({ apiUrl }) => {
     }
   };
 
-  const fetchTopZones = async () => {
+  const fetchTopZones = useCallback(async () => {
     try {
       const activeLayerNames = Object.keys(activeLayers).filter(key => activeLayers[key]);
       const response = await axios.get(`${apiUrl}/analytics/top-zones`, {
@@ -144,7 +144,7 @@ const MapDashboard = ({ apiUrl }) => {
     } catch (error) {
       console.error('Error fetching top zones:', error);
     }
-  };
+  }, [activeLayers, apiUrl]);
 
   const toggleLayer = (layerKey) => {
     setActiveLayers(prev => ({
