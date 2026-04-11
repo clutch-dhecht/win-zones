@@ -8,7 +8,6 @@ const MAPBOX_TOKEN = process.env.REACT_APP_MAPBOX_TOKEN;
 
 const COUNTIES_SOURCE = 'https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json';
 
-// FIPS State Code -> State Name
 const FIPS_TO_STATE = {
   '01': 'Alabama', '02': 'Alaska', '04': 'Arizona', '05': 'Arkansas',
   '06': 'California', '08': 'Colorado', '09': 'Connecticut', '10': 'Delaware',
@@ -25,20 +24,13 @@ const FIPS_TO_STATE = {
   '54': 'West Virginia', '55': 'Wisconsin', '56': 'Wyoming'
 };
 
-// Normalize county name to handle common mismatches:
-// "SAINT" vs "ST.", "DE KALB" vs "DEKALB", Virginia "CITY" suffix, apostrophes, etc.
 const normalizeCountyName = (name) => {
   let n = name.toUpperCase().trim();
-  // Remove " CITY" suffix (Virginia independent cities)
   n = n.replace(/ CITY$/, '');
-  // Normalize saint variants
   n = n.replace(/^SAINT /i, 'ST ').replace(/^SAINTE /i, 'STE ');
   n = n.replace(/^ST\. /i, 'ST ').replace(/^STE\. /i, 'STE ');
-  // Remove periods, apostrophes, special chars
   n = n.replace(/\./g, '').replace(/'/g, '').replace(/\u00D1/g, 'N').replace(/\u00F1/g, 'N');
-  // Collapse prefixes (DE KALB -> DEKALB, LA SALLE -> LASALLE, LE FLORE -> LEFLORE)
   n = n.replace(/^DE /, 'DE').replace(/^LA /, 'LA').replace(/^LE /, 'LE');
-  // Normalize hyphens to spaces (Matanuska-Susitna -> Matanuska Susitna)
   n = n.replace(/-/g, ' ');
   return n;
 };
@@ -50,7 +42,9 @@ const normalizeStateName = (s) => {
   ).join(' ');
 };
 
-// Helper to get layer color (respects user overrides)
+// Slugify layer name for use as GeoJSON property key
+const slugify = (name) => name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+
 const getColor = (layerName, layerColors) => {
   if (layerColors[layerName]) return layerColors[layerName];
   const config = getLayerConfig(layerName);
@@ -80,7 +74,6 @@ const MapboxVisualization = ({
   const [countiesGeoJSON, setCountiesGeoJSON] = useState(null);
   const mapRef = useRef(null);
 
-  // Load counties GeoJSON
   useEffect(() => {
     fetch(COUNTIES_SOURCE)
       .then(res => res.json())
@@ -88,29 +81,31 @@ const MapboxVisualization = ({
       .catch(err => console.error('Error loading counties GeoJSON:', err));
   }, []);
 
-  // Build city markers GeoJSON (one feature per city)
+  // Which density layers are currently active
+  const activeDensityLayers = useMemo(() => {
+    return Object.keys(activeLayers).filter(layer => {
+      if (!activeLayers[layer]) return false;
+      const config = getLayerConfig(layer);
+      return config.type === 'density' || config.type === 'base';
+    });
+  }, [activeLayers]);
+
+  const hasDensityActive = activeDensityLayers.length > 0;
+
+  // Build city markers GeoJSON
   const cityMarkersGeoJSON = useMemo(() => {
     if (!cityData || cityData.length === 0) return null;
-
     const features = [];
     cityData.forEach((city, idx) => {
-      let hasActivePoint = false;
       let dominantLayer = null;
       let maxVal = 0;
-
       Object.keys(city.layers).forEach(layerName => {
         if (!activeLayers[layerName]) return;
-        const config = getLayerConfig(layerName);
-        if (config.type !== 'point') return;
+        if (getLayerConfig(layerName).type !== 'point') return;
         const value = city.layers[layerName];
-        if (value > 0) {
-          hasActivePoint = true;
-          if (value > maxVal) { maxVal = value; dominantLayer = layerName; }
-        }
+        if (value > 0 && value > maxVal) { maxVal = value; dominantLayer = layerName; }
       });
-
-      if (!hasActivePoint || !dominantLayer) return;
-
+      if (!dominantLayer) return;
       features.push({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [city.lon, city.lat] },
@@ -125,14 +120,12 @@ const MapboxVisualization = ({
         }
       });
     });
-
     return { type: 'FeatureCollection', features };
   }, [cityData, activeLayers, layerColors]);
 
-  // Build radius circles (turf geographic polygons)
+  // Build radius circles
   const radiusGeoJSON = useMemo(() => {
     if (!cityData || cityData.length === 0) return null;
-
     const features = [];
     cityData.forEach((city, idx) => {
       Object.keys(city.layers).forEach(layerName => {
@@ -141,53 +134,52 @@ const MapboxVisualization = ({
         if (value <= 0) return;
         const config = getLayerConfig(layerName);
         if (!config.radius?.enabled) return;
-        const radiusSetting = radiusSettings[layerName];
-        if (!radiusSetting?.visible) return;
-
-        const miles = radiusSetting.miles || config.radius.default;
-        const circleFeature = circle([city.lon, city.lat], miles, { steps: 64, units: 'miles' });
-        circleFeature.properties = {
-          id: `radius-${idx}-${layerName}`,
-          layer: layerName,
-          color: getDensityColor(layerName, layerColors),
-          radiusMiles: miles
-        };
-        features.push(circleFeature);
+        const rs = radiusSettings[layerName];
+        if (!rs?.visible) return;
+        const miles = rs.miles || config.radius.default;
+        const cf = circle([city.lon, city.lat], miles, { steps: 64, units: 'miles' });
+        cf.properties = { id: `r-${idx}-${layerName}`, layer: layerName, color: getDensityColor(layerName, layerColors), radiusMiles: miles };
+        features.push(cf);
       });
     });
-
     return { type: 'FeatureCollection', features };
   }, [cityData, activeLayers, radiusSettings, layerColors]);
 
-  // Build enriched county choropleth GeoJSON with normalized name matching
+  // Build per-layer enriched county GeoJSON
+  // Each feature gets properties: `val_{slug}` (raw value) and `int_{slug}` (normalized intensity)
+  // for EACH density layer. This allows separate Mapbox fill layers per density layer.
   const enrichedCountiesGeoJSON = useMemo(() => {
     if (!countiesGeoJSON) return null;
 
-    // Build lookup: normalizedKey -> { total, layers }
+    // First pass: build lookup keyed by normalized state|county
+    // Structure: { key: { layerName: value, ... } }
     const dataLookup = {};
 
     [...(countyData || []), ...(wheatData || [])].forEach(county => {
       const state = normalizeStateName(county.state);
       const countyNorm = normalizeCountyName(county.county);
       const key = `${state}|${countyNorm}`;
-      if (!dataLookup[key]) dataLookup[key] = { total: 0, layers: {} };
+      if (!dataLookup[key]) dataLookup[key] = {};
 
       Object.keys(county.layers).forEach(layer => {
-        if (!activeLayers[layer]) return;
         const config = getLayerConfig(layer);
         if (config.type !== 'density' && config.type !== 'base') return;
         const value = county.layers[layer] || 0;
         if (value > 0) {
-          dataLookup[key].total += value;
-          dataLookup[key].layers[layer] = (dataLookup[key].layers[layer] || 0) + value;
+          dataLookup[key][layer] = (dataLookup[key][layer] || 0) + value;
         }
       });
     });
 
-    let maxVal = 1;
-    Object.values(dataLookup).forEach(d => { if (d.total > maxVal) maxVal = d.total; });
-    const logMax = Math.log(maxVal + 1);
+    // Compute per-layer max for independent normalization
+    const layerMaxes = {};
+    Object.values(dataLookup).forEach(layers => {
+      Object.entries(layers).forEach(([layer, value]) => {
+        if (!layerMaxes[layer] || value > layerMaxes[layer]) layerMaxes[layer] = value;
+      });
+    });
 
+    // Enrich features with per-layer properties
     const enrichedFeatures = countiesGeoJSON.features.map(feature => {
       const rawName = feature.properties.NAME || '';
       const countyNorm = normalizeCountyName(rawName);
@@ -195,53 +187,38 @@ const MapboxVisualization = ({
       const stateName = FIPS_TO_STATE[stateFips] || '';
       const key = `${stateName}|${countyNorm}`;
 
-      const data = dataLookup[key];
-      let total = 0;
-      let dominantColor = 'rgba(0,0,0,0)';
-      let layerBreakdown = {};
+      const countyLayers = dataLookup[key] || {};
+      const extraProps = { state_name: stateName };
 
-      if (data && data.total > 0) {
-        total = data.total;
-        layerBreakdown = data.layers;
-        let maxLayerVal = 0;
-        Object.entries(layerBreakdown).forEach(([layer, value]) => {
-          if (value > maxLayerVal) {
-            maxLayerVal = value;
-            dominantColor = getDensityColor(layer, layerColors);
-          }
-        });
-      }
+      // Per-layer values and intensities
+      let totalAllLayers = 0;
+      const layerBreakdown = {};
 
-      let intensity = 0;
-      if (total > 0) {
-        intensity = Math.log(total + 1) / logMax;
+      Object.entries(countyLayers).forEach(([layer, value]) => {
+        const slug = slugify(layer);
+        const max = layerMaxes[layer] || 1;
+        const logMax = Math.log(max + 1);
+        let intensity = Math.log(value + 1) / logMax;
         intensity = Math.max(intensity, 0.2);
-        intensity = Math.min(intensity * 0.8, 0.85);
-      }
+        intensity = Math.min(intensity * 0.75, 0.8);
+
+        extraProps[`val_${slug}`] = value;
+        extraProps[`int_${slug}`] = intensity;
+        totalAllLayers += value;
+        layerBreakdown[layer] = value;
+      });
+
+      extraProps.density_total = totalAllLayers;
+      extraProps.density_layers = JSON.stringify(layerBreakdown);
 
       return {
         ...feature,
-        properties: {
-          ...feature.properties,
-          density_total: total,
-          density_intensity: intensity,
-          density_color: dominantColor,
-          density_layers: JSON.stringify(layerBreakdown),
-          state_name: stateName
-        }
+        properties: { ...feature.properties, ...extraProps }
       };
     });
 
     return { type: 'FeatureCollection', features: enrichedFeatures };
-  }, [countiesGeoJSON, countyData, wheatData, activeLayers, layerColors]);
-
-  const hasDensityActive = useMemo(() => {
-    return Object.keys(activeLayers).some(layer => {
-      if (!activeLayers[layer]) return false;
-      const config = getLayerConfig(layer);
-      return config.type === 'density' || config.type === 'base';
-    });
-  }, [activeLayers]);
+  }, [countiesGeoJSON, countyData, wheatData]);
 
   // Click handler
   const onMapClick = useCallback((event) => {
@@ -261,7 +238,7 @@ const MapboxVisualization = ({
     } else if (feature.layer.id === 'clusters') {
       const map = mapRef.current?.getMap();
       if (map) map.easeTo({ center: feature.geometry.coordinates, zoom: viewState.zoom + 2 });
-    } else if (feature.layer.id === 'county-fill' && feature.properties.density_total > 0) {
+    } else if (feature.layer.id.startsWith('county-fill-') && feature.properties.density_total > 0) {
       setPopupInfo({
         type: 'county',
         longitude: event.lngLat.lng,
@@ -274,38 +251,35 @@ const MapboxVisualization = ({
     }
   }, [viewState.zoom]);
 
-  // Hover handler for tooltips
+  // Hover handler
   const onMouseMove = useCallback((event) => {
     const features = event.features;
-    if (!features || features.length === 0) {
-      setHoverInfo(null);
-      return;
-    }
+    if (!features || features.length === 0) { setHoverInfo(null); return; }
 
     const feature = features[0];
     if (feature.layer.id === 'city-markers-unclustered') {
       setHoverInfo({
-        type: 'city',
-        x: event.point.x,
-        y: event.point.y,
-        city: feature.properties.city,
-        state: feature.properties.state,
-        layer: feature.properties.layer,
-        value: feature.properties.value
+        type: 'city', x: event.point.x, y: event.point.y,
+        city: feature.properties.city, state: feature.properties.state,
+        layer: feature.properties.layer, value: feature.properties.value
       });
-    } else if (feature.layer.id === 'county-fill' && feature.properties.density_total > 0) {
+    } else if (feature.layer.id.startsWith('county-fill-') && feature.properties.density_total > 0) {
+      // Show per-layer breakdown in hover
+      const layers = JSON.parse(feature.properties.density_layers || '{}');
+      const activeParts = Object.entries(layers)
+        .filter(([l]) => activeLayers[l])
+        .map(([l, v]) => `${l}: ${v.toLocaleString()}`)
+        .join(' | ');
       setHoverInfo({
-        type: 'county',
-        x: event.point.x,
-        y: event.point.y,
-        county: feature.properties.NAME,
-        state: feature.properties.state_name,
-        total: feature.properties.density_total
+        type: 'county', x: event.point.x, y: event.point.y,
+        county: feature.properties.NAME, state: feature.properties.state_name,
+        total: feature.properties.density_total,
+        detail: activeParts
       });
     } else {
       setHoverInfo(null);
     }
-  }, []);
+  }, [activeLayers]);
 
   const onMouseLeave = useCallback(() => setHoverInfo(null), []);
 
@@ -316,40 +290,37 @@ const MapboxVisualization = ({
         : 'mapbox://styles/mapbox/light-v11'
     );
   };
-
   const isSatellite = mapStyle.includes('satellite');
 
-  // Color expressions for radius fills
+  // Radius color expression
   const radiusColorExpr = useMemo(() => {
     const entries = [];
     Object.keys(activeLayers).forEach(layer => {
       if (!activeLayers[layer]) return;
-      const config = getLayerConfig(layer);
-      if (config.radius?.enabled) entries.push(layer, getDensityColor(layer, layerColors));
+      if (getLayerConfig(layer).radius?.enabled) entries.push(layer, getDensityColor(layer, layerColors));
     });
-    if (entries.length === 0) return '#888888';
-    return ['match', ['get', 'layer'], ...entries, '#888888'];
+    return entries.length === 0 ? '#888888' : ['match', ['get', 'layer'], ...entries, '#888888'];
   }, [activeLayers, layerColors]);
 
-  // Color expression for markers
+  // Marker color expression
   const markerColorExpr = useMemo(() => {
     const entries = [];
     Object.keys(activeLayers).forEach(layer => {
       if (!activeLayers[layer]) return;
-      const config = getLayerConfig(layer);
-      if (config.type === 'point') entries.push(layer, getColor(layer, layerColors));
+      if (getLayerConfig(layer).type === 'point') entries.push(layer, getColor(layer, layerColors));
     });
-    if (entries.length === 0) return '#888888';
-    return ['match', ['get', 'layer'], ...entries, '#888888'];
+    return entries.length === 0 ? '#888888' : ['match', ['get', 'layer'], ...entries, '#888888'];
   }, [activeLayers, layerColors]);
 
+  // Interactive layer IDs (includes per-density-layer fill IDs)
   const interactiveIds = useMemo(() => {
     const ids = ['city-markers-unclustered', 'clusters'];
-    if (hasDensityActive) ids.push('county-fill');
+    activeDensityLayers.forEach(layer => {
+      ids.push(`county-fill-${slugify(layer)}`);
+    });
     return ids;
-  }, [hasDensityActive]);
+  }, [activeDensityLayers]);
 
-  // Cursor style on hover
   const cursor = hoverInfo ? 'pointer' : 'grab';
 
   return (
@@ -382,27 +353,32 @@ const MapboxVisualization = ({
           >
             <NavigationControl position="top-left" />
 
-            {/* County choropleth */}
+            {/* County choropleth — one fill layer PER active density layer */}
             {hasDensityActive && enrichedCountiesGeoJSON && (
               <Source id="counties" type="geojson" data={enrichedCountiesGeoJSON}>
-                <Layer
-                  id="county-fill"
-                  type="fill"
-                  paint={{
-                    'fill-color': [
-                      'case',
-                      ['>', ['get', 'density_total'], 0],
-                      ['get', 'density_color'],
-                      'rgba(0,0,0,0)'
-                    ],
-                    'fill-opacity': [
-                      'case',
-                      ['>', ['get', 'density_total'], 0],
-                      ['get', 'density_intensity'],
-                      0
-                    ]
-                  }}
-                />
+                {activeDensityLayers.map(layer => {
+                  const slug = slugify(layer);
+                  const color = getDensityColor(layer, layerColors);
+                  const valProp = `val_${slug}`;
+                  const intProp = `int_${slug}`;
+
+                  return (
+                    <Layer
+                      key={`county-fill-${slug}`}
+                      id={`county-fill-${slug}`}
+                      type="fill"
+                      paint={{
+                        'fill-color': color,
+                        'fill-opacity': [
+                          'case',
+                          ['>', ['coalesce', ['get', intProp], 0], 0],
+                          ['get', intProp],
+                          0
+                        ]
+                      }}
+                    />
+                  );
+                })}
                 <Layer
                   id="county-outline"
                   type="line"
@@ -417,19 +393,12 @@ const MapboxVisualization = ({
                 <Layer
                   id="radius-fill"
                   type="fill"
-                  paint={{
-                    'fill-color': radiusColorExpr,
-                    'fill-opacity': 0.12
-                  }}
+                  paint={{ 'fill-color': radiusColorExpr, 'fill-opacity': 0.12 }}
                 />
                 <Layer
                   id="radius-outline"
                   type="line"
-                  paint={{
-                    'line-color': radiusColorExpr,
-                    'line-width': 1.5,
-                    'line-opacity': 0.5
-                  }}
+                  paint={{ 'line-color': radiusColorExpr, 'line-width': 1.5, 'line-opacity': 0.5 }}
                 />
               </Source>
             )}
@@ -449,14 +418,8 @@ const MapboxVisualization = ({
                   type="circle"
                   filter={['has', 'point_count']}
                   paint={{
-                    'circle-color': [
-                      'step', ['get', 'point_count'],
-                      '#57534E', 10, '#44403C', 50, '#292524', 200, '#1C1917'
-                    ],
-                    'circle-radius': [
-                      'step', ['get', 'point_count'],
-                      16, 10, 22, 50, 28, 200, 34
-                    ],
+                    'circle-color': ['step', ['get', 'point_count'], '#57534E', 10, '#44403C', 50, '#292524', 200, '#1C1917'],
+                    'circle-radius': ['step', ['get', 'point_count'], 16, 10, 22, 50, 28, 200, 34],
                     'circle-stroke-width': 2,
                     'circle-stroke-color': '#FFFFFF'
                   }}
@@ -477,10 +440,7 @@ const MapboxVisualization = ({
                   type="circle"
                   filter={['!', ['has', 'point_count']]}
                   paint={{
-                    'circle-radius': [
-                      'interpolate', ['linear'], ['get', 'value'],
-                      0, 5, 10, 7, 50, 10, 200, 14
-                    ],
+                    'circle-radius': ['interpolate', ['linear'], ['get', 'value'], 0, 5, 10, 7, 50, 10, 200, 14],
                     'circle-color': markerColorExpr,
                     'circle-opacity': 0.85,
                     'circle-stroke-width': 2,
@@ -503,9 +463,7 @@ const MapboxVisualization = ({
                 <div className="p-1 min-w-[160px]" data-testid="map-popup">
                   {popupInfo.type === 'city' && (
                     <>
-                      <div className="text-sm font-semibold text-stone-900">
-                        {popupInfo.city}, {popupInfo.state}
-                      </div>
+                      <div className="text-sm font-semibold text-stone-900">{popupInfo.city}, {popupInfo.state}</div>
                       <div className="mt-1 space-y-0.5">
                         {Object.entries(popupInfo.allLayers || {}).map(([layer, value]) => (
                           value > 0 && activeLayers[layer] ? (
@@ -520,16 +478,14 @@ const MapboxVisualization = ({
                   )}
                   {popupInfo.type === 'county' && (
                     <>
-                      <div className="text-sm font-semibold text-stone-900">
-                        {popupInfo.county} County, {popupInfo.state}
-                      </div>
-                      <div className="text-xs text-stone-500">
-                        Total: {(popupInfo.total || 0).toLocaleString()}
-                      </div>
+                      <div className="text-sm font-semibold text-stone-900">{popupInfo.county} County, {popupInfo.state}</div>
                       <div className="mt-1 space-y-0.5">
-                        {Object.entries(popupInfo.layers || {}).map(([layer, value]) => (
+                        {Object.entries(popupInfo.layers || {}).filter(([l]) => activeLayers[l]).map(([layer, value]) => (
                           <div key={layer} className="text-xs text-stone-600 flex justify-between gap-3">
-                            <span>{layer}:</span>
+                            <span className="flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: getDensityColor(layer, layerColors) }} />
+                              {layer}:
+                            </span>
                             <span className="font-medium">{value.toLocaleString()}</span>
                           </div>
                         ))}
@@ -541,10 +497,10 @@ const MapboxVisualization = ({
             )}
           </Map>
 
-          {/* Hover tooltip (positioned at cursor) */}
+          {/* Hover tooltip */}
           {hoverInfo && !popupInfo && (
             <div
-              className="absolute pointer-events-none z-20 bg-stone-900/90 text-white text-xs rounded px-2.5 py-1.5 shadow-lg backdrop-blur-sm"
+              className="absolute pointer-events-none z-20 bg-stone-900/90 text-white text-xs rounded px-2.5 py-1.5 shadow-lg backdrop-blur-sm max-w-xs"
               style={{ left: hoverInfo.x + 12, top: hoverInfo.y - 12 }}
               data-testid="hover-tooltip"
             >
@@ -552,7 +508,10 @@ const MapboxVisualization = ({
                 <span>{hoverInfo.city}, {hoverInfo.state} — {hoverInfo.layer}: {Number(hoverInfo.value).toLocaleString()}</span>
               )}
               {hoverInfo.type === 'county' && (
-                <span>{hoverInfo.county} Co., {hoverInfo.state} — Total: {Number(hoverInfo.total).toLocaleString()}</span>
+                <div>
+                  <div className="font-medium">{hoverInfo.county} Co., {hoverInfo.state}</div>
+                  {hoverInfo.detail && <div className="opacity-80 mt-0.5">{hoverInfo.detail}</div>}
+                </div>
               )}
             </div>
           )}

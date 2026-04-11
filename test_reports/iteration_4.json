@@ -1,0 +1,75 @@
+{
+  "summary": "Completed comprehensive testing of Territory Atlas iteration 4 - Per-layer density isolation feature. All backend APIs (7/7 tests passed). All frontend features working correctly: per-layer density rendering, layer toggle isolation, color picker, hover tooltips, click popups, analytics updates, point markers, clustering, and radius circles.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Backend: GET /api/ returns welcome message (PASS)",
+    "Backend: GET /api/data/city returns city records with proper structure (PASS)",
+    "Backend: GET /api/data/county returns county records (PASS)",
+    "Backend: GET /api/data/wheat returns wheat data with Acres layer (PASS)",
+    "Backend: GET /api/analytics/top-zones returns aggregated top states (PASS)",
+    "Backend: Analytics with layer filter works (PASS)",
+    "Backend: Data integrity - all datasets have records (PASS)",
+    "Frontend: All density layers ON - map shows combined choropleth with purple Acres dominant (PASS)",
+    "Frontend: Toggle OFF Acres - purple disappears, yellow/green/teal counties clearly visible (PASS)",
+    "Frontend: Toggle OFF all density layers except 1000-plus Acre Growers - only yellow shading visible (PASS)",
+    "Frontend: Toggle OFF all density layers - county choropleth disappears, only point markers visible (PASS)",
+    "Frontend: Toggle density layers back ON - choropleth reappears (PASS)",
+    "Frontend: Color picker works - changing Acres color updates just that layer's choropleth (PASS)",
+    "Frontend: Click popup shows per-layer breakdown with only active layers shown (PASS)",
+    "Frontend: Hover tooltip shows per-layer detail for county (PASS)",
+    "Frontend: Analytics panel updates when density layers toggled - Total: 37M (all) -> 28K (no Acres) (PASS)",
+    "Frontend: Point markers and clustering work correctly (PASS)",
+    "Frontend: Radius circles work when toggled on (25mi/50mi/100mi options) (PASS)"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_territory_atlas_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [
+    "/app/backend/tests/test_territory_atlas_api.py"
+  ],
+  "success_rate": {
+    "backend": "100% (7/7 tests passed)",
+    "frontend": "100% (all per-layer density isolation features verified)"
+  },
+  "test_credentials": "No authentication required. Mapbox token configured in .env",
+  "seed_data_creation": "Data already loaded in MongoDB from previous session - city records, county records, wheat data with Acres layer",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Per-layer density isolation feature fully working. Key implementation: MapboxVisualization.js creates separate Mapbox fill layers per active density layer (county-fill-acres, county-fill-1000_plus_acre_growers, etc.). Each layer uses its own color and independently normalized opacity via log-scaled intensity. Analytics Total changes dramatically when Acres is toggled: ~37M (all layers) vs ~28K (without Acres). Key data-testids: layer-toggle-{name}, color-picker-{name}, hover-tooltip, map-popup, radius-toggle-{name}, radius-miles-{name}-{miles}.",
+  "features_verified": {
+    "per_layer_density_isolation": {
+      "separate_mapbox_layers": "Each density layer renders as its own Mapbox fill layer with slugified ID (county-fill-acres, county-fill-1000_plus_acre_growers, etc.)",
+      "independent_normalization": "Each layer uses log-scaled intensity normalization based on its own max value",
+      "layer_toggle_isolation": "Toggling Acres OFF reveals yellow/green/teal layers that were previously drowned by purple",
+      "analytics_updates": "Total Opportunities updates correctly: 37,121,935 (all) -> 28,849 (no Acres)"
+    },
+    "layer_controls": {
+      "switch_toggle": "Works correctly for all density layers",
+      "color_picker": "15 preset colors, updates map choropleth in real-time",
+      "inactive_opacity": "Grayed out appearance when layer is OFF"
+    },
+    "map_interactions": {
+      "hover_tooltip": "Shows county name and per-layer breakdown (only active layers)",
+      "click_popup": "Shows detailed breakdown with colored dots (only active layers)",
+      "point_markers": "Clustered markers with zoom-based expansion",
+      "radius_circles": "25mi/50mi/100mi options for Feed Mills, Grain Fumigation, Customers"
+    }
+  },
+  "analytics_verification": {
+    "all_layers_on": "Total: 37,121,935 - Kansas #1 (6,629,443)",
+    "acres_off": "Total: 28,849 - Kansas #1 (4,456)",
+    "only_1000plus_acre_growers": "Total: 26,485 - Kansas #1 (4,154)",
+    "all_density_off": "Total: 781 - Washington #1 (148)"
+  }
+}

@@ -6,7 +6,7 @@ import pytest
 import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
+BASE_URL = "https://territory-atlas.preview.emergentagent.com"
 
 class TestHealthAndRoot:
     """Test basic API health and root endpoint"""
