@@ -162,52 +162,6 @@ async def upload_city_data(file: UploadFile = File(...)):
     except Exception as e:
         logging.error(f"Error processing city data: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-async def upload_city_data(file: UploadFile = File(...)):
-    """Upload and process city-level CSV data"""
-    try:
-        contents = await file.read()
-        df = pd.read_csv(io.BytesIO(contents))
-        
-        if 'State' not in df.columns or 'City' not in df.columns:
-            raise HTTPException(status_code=400, detail="CSV must have 'State' and 'City' columns")
-        
-        # Filter to US states only
-        df = df[df['State'].apply(is_us_state)]
-        
-        # Get layer columns (all columns except State and City)
-        layer_columns = [col for col in df.columns if col not in ['State', 'City']]
-        
-        processed_data = []
-        skipped_count = 0
-        
-        for _, row in df.iterrows():
-            geo = geocode_city(row['City'], row['State'])
-            if geo:
-                layers = {col: int(row[col]) if pd.notna(row[col]) else 0 for col in layer_columns}
-                processed_data.append({
-                    'state': row['State'],
-                    'city': row['City'],
-                    'lat': geo['lat'],
-                    'lon': geo['lon'],
-                    'layers': layers
-                })
-            else:
-                skipped_count += 1
-        
-        # Store in MongoDB
-        await db.city_data.delete_many({})
-        if processed_data:
-            await db.city_data.insert_many(processed_data)
-        
-        return {
-            "success": True,
-            "processed": len(processed_data),
-            "skipped": skipped_count,
-            "layers": layer_columns
-        }
-    except Exception as e:
-        logging.error(f"Error processing city data: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.post("/upload/county")
 async def upload_county_data(file: UploadFile = File(...)):
