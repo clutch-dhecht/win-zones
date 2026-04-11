@@ -72,13 +72,13 @@ Interactive map visualization app for sales territory mapping using CSV datasets
 - [x] Map style toggle (Street/Satellite)
 - [x] Top opportunity zones analytics panel
 - [x] MongoDB storage for all datasets
+- [x] Per-layer density isolation — each density layer renders as its own Mapbox fill layer with independent color and log-scaled normalization. Toggling off "Acres" reveals other layers clearly.
 
 ## Data Alignment Notes
 - 99.1% county match rate (2347/2368) with normalization
 - 21 remaining unmatched are data quality issues: cross-state county assignments in wheat data, Connecticut planning regions, renamed counties (Oglala Lakota)
 
 ## P1 - Upcoming
-- Per-layer density isolation (toggle individual choropleth layers instead of combined view)
 - Backend spatial filtering (bbox viewport queries) for 100k+ point scaling
 
 ## P2 - Future/Backlog
