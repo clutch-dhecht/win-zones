@@ -8,13 +8,13 @@ import { toast } from 'sonner';
 import { getLayerConfig } from '../config/layerConfig';
 
 const MapDashboard = ({ apiUrl }) => {
-  const [cityData, setCityData] = useState([]);
-  const [countyData, setCountyData] = useState([]);
-  const [wheatData, setWheatData] = useState([]);
+  const [pointData, setPointData] = useState([]);
+  const [densityData, setDensityData] = useState([]);
   const [allLayers, setAllLayers] = useState([]);
   const [activeLayers, setActiveLayers] = useState({});
   const [radiusSettings, setRadiusSettings] = useState({});
   const [layerColors, setLayerColors] = useState({});
+  const [winZonesEnabled, setWinZonesEnabled] = useState(false);
   const [topZones, setTopZones] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -32,21 +32,21 @@ const MapDashboard = ({ apiUrl }) => {
     return { newActive, newRadius };
   };
 
-  const handleCityUpload = async (file) => {
+  const handlePointUpload = async (file) => {
     const formData = new FormData();
     formData.append('file', file);
     try {
       setLoading(true);
-      const response = await axios.post(`${apiUrl}/upload/city`, formData, {
+      const response = await axios.post(`${apiUrl}/upload/point`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      toast.success(`City data: ${response.data.processed} cities processed, ${response.data.skipped} skipped`);
+      toast.success(`Point data: ${response.data.processed} points processed, ${response.data.skipped} skipped`);
       const layers = response.data.layers || [];
       setAllLayers(prev => [...new Set([...prev, ...layers])]);
       const { newActive, newRadius } = initLayerSettings(layers, activeLayers, radiusSettings);
       setActiveLayers(newActive);
       setRadiusSettings(newRadius);
-      await fetchCityData();
+      await fetchPointData();
     } catch (error) {
       toast.error('Upload failed: ' + (error.response?.data?.detail || error.message));
     } finally {
@@ -54,20 +54,21 @@ const MapDashboard = ({ apiUrl }) => {
     }
   };
 
-  const handleCountyUpload = async (file) => {
+  const handleDensityUpload = async (file) => {
     const formData = new FormData();
     formData.append('file', file);
     try {
       setLoading(true);
-      const response = await axios.post(`${apiUrl}/upload/county`, formData, {
+      const response = await axios.post(`${apiUrl}/upload/density`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      toast.success(`County data: ${response.data.processed} counties processed`);
+      toast.success(`Density data: ${response.data.processed} records merged (${response.data.total} total)`);
       const layers = response.data.layers || [];
       setAllLayers(prev => [...new Set([...prev, ...layers])]);
-      const { newActive } = initLayerSettings(layers, activeLayers, radiusSettings);
+      const { newActive, newRadius } = initLayerSettings(layers, activeLayers, radiusSettings);
       setActiveLayers(newActive);
-      await fetchCountyData();
+      setRadiusSettings(newRadius);
+      await fetchDensityData();
     } catch (error) {
       toast.error('Upload failed: ' + (error.response?.data?.detail || error.message));
     } finally {
@@ -75,51 +76,21 @@ const MapDashboard = ({ apiUrl }) => {
     }
   };
 
-  const handleWheatUpload = async (file) => {
-    const formData = new FormData();
-    formData.append('file', file);
+  const fetchPointData = async () => {
     try {
-      setLoading(true);
-      const response = await axios.post(`${apiUrl}/upload/wheat`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      toast.success(`Wheat data: ${response.data.processed} records processed`);
-      const layers = response.data.layers || [];
-      setAllLayers(prev => [...new Set([...prev, ...layers])]);
-      const { newActive } = initLayerSettings(layers, activeLayers, radiusSettings);
-      setActiveLayers(newActive);
-      await fetchWheatData();
+      const response = await axios.get(`${apiUrl}/data/point`);
+      setPointData(response.data.data || []);
     } catch (error) {
-      toast.error('Upload failed: ' + (error.response?.data?.detail || error.message));
-    } finally {
-      setLoading(false);
+      console.error('Error fetching point data:', error);
     }
   };
 
-  const fetchCityData = async () => {
+  const fetchDensityData = async () => {
     try {
-      const response = await axios.get(`${apiUrl}/data/city`);
-      setCityData(response.data.data || []);
+      const response = await axios.get(`${apiUrl}/data/density`);
+      setDensityData(response.data.data || []);
     } catch (error) {
-      console.error('Error fetching city data:', error);
-    }
-  };
-
-  const fetchCountyData = async () => {
-    try {
-      const response = await axios.get(`${apiUrl}/data/county`);
-      setCountyData(response.data.data || []);
-    } catch (error) {
-      console.error('Error fetching county data:', error);
-    }
-  };
-
-  const fetchWheatData = async () => {
-    try {
-      const response = await axios.get(`${apiUrl}/data/wheat`);
-      setWheatData(response.data.data || []);
-    } catch (error) {
-      console.error('Error fetching wheat data:', error);
+      console.error('Error fetching density data:', error);
     }
   };
 
@@ -152,28 +123,25 @@ const MapDashboard = ({ apiUrl }) => {
   useEffect(() => {
     const loadExistingData = async () => {
       try {
-        const [cityResponse, countyResponse, wheatResponse] = await Promise.all([
-          axios.get(`${apiUrl}/data/city`),
-          axios.get(`${apiUrl}/data/county`),
-          axios.get(`${apiUrl}/data/wheat`)
+        const [pointResponse, densityResponse] = await Promise.all([
+          axios.get(`${apiUrl}/data/point`),
+          axios.get(`${apiUrl}/data/density`)
         ]);
 
-        const cityDataLoaded = cityResponse.data.data || [];
-        const countyDataLoaded = countyResponse.data.data || [];
-        const wheatDataLoaded = wheatResponse.data.data || [];
+        const pointLoaded = pointResponse.data.data || [];
+        const densityLoaded = densityResponse.data.data || [];
 
         let combinedLayers = [];
-        if (cityDataLoaded.length > 0) {
-          setCityData(cityDataLoaded);
-          combinedLayers = [...combinedLayers, ...Object.keys(cityDataLoaded[0].layers)];
+        if (pointLoaded.length > 0) {
+          setPointData(pointLoaded);
+          combinedLayers = [...combinedLayers, ...Object.keys(pointLoaded[0].layers)];
         }
-        if (countyDataLoaded.length > 0) {
-          setCountyData(countyDataLoaded);
-          combinedLayers = [...combinedLayers, ...Object.keys(countyDataLoaded[0].layers)];
-        }
-        if (wheatDataLoaded.length > 0) {
-          setWheatData(wheatDataLoaded);
-          combinedLayers = [...combinedLayers, ...Object.keys(wheatDataLoaded[0].layers)];
+        if (densityLoaded.length > 0) {
+          setDensityData(densityLoaded);
+          // Collect ALL unique layer names across all density records
+          const densityLayers = new Set();
+          densityLoaded.forEach(d => Object.keys(d.layers).forEach(l => densityLayers.add(l)));
+          combinedLayers = [...combinedLayers, ...densityLayers];
         }
 
         const uniqueLayers = [...new Set(combinedLayers)];
@@ -191,12 +159,12 @@ const MapDashboard = ({ apiUrl }) => {
   }, [apiUrl]);
 
   useEffect(() => {
-    if (cityData.length > 0 || countyData.length > 0 || wheatData.length > 0) {
+    if (pointData.length > 0 || densityData.length > 0) {
       fetchTopZones();
     }
-  }, [fetchTopZones, cityData, countyData, wheatData]);
+  }, [fetchTopZones, pointData, densityData]);
 
-  const hasData = cityData.length > 0 || countyData.length > 0 || wheatData.length > 0;
+  const hasData = pointData.length > 0 || densityData.length > 0;
 
   return (
     <div className="h-screen w-full flex flex-col md:flex-row bg-stone-100 overflow-hidden">
@@ -218,9 +186,8 @@ const MapDashboard = ({ apiUrl }) => {
               Data Upload
             </label>
             <FileUpload
-              onCityUpload={handleCityUpload}
-              onCountyUpload={handleCountyUpload}
-              onWheatUpload={handleWheatUpload}
+              onPointUpload={handlePointUpload}
+              onDensityUpload={handleDensityUpload}
               loading={loading}
             />
           </div>
@@ -239,6 +206,10 @@ const MapDashboard = ({ apiUrl }) => {
                 onRadiusChange={handleRadiusChange}
                 layerColors={layerColors}
                 onColorChange={handleColorChange}
+                winZonesEnabled={winZonesEnabled}
+                onWinZonesToggle={setWinZonesEnabled}
+                hasPointData={pointData.length > 0}
+                hasDensityData={densityData.length > 0}
               />
             </div>
           )}
@@ -258,12 +229,12 @@ const MapDashboard = ({ apiUrl }) => {
       {/* Main Map */}
       <div className="flex-grow relative h-full bg-stone-50 flex flex-col">
         <MapboxVisualization
-          cityData={cityData}
-          countyData={countyData}
-          wheatData={wheatData}
+          pointData={pointData}
+          densityData={densityData}
           activeLayers={activeLayers}
           radiusSettings={radiusSettings}
           layerColors={layerColors}
+          winZonesEnabled={winZonesEnabled}
           hasData={hasData}
         />
       </div>

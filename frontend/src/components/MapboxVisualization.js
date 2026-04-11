@@ -5,7 +5,6 @@ import circle from '@turf/circle';
 import { getLayerConfig } from '../config/layerConfig';
 
 const MAPBOX_TOKEN = process.env.REACT_APP_MAPBOX_TOKEN;
-
 const COUNTIES_SOURCE = 'https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json';
 
 const FIPS_TO_STATE = {
@@ -37,12 +36,9 @@ const normalizeCountyName = (name) => {
 
 const normalizeStateName = (s) => {
   if (!s) return '';
-  return s.trim().split(' ').map(w =>
-    w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
-  ).join(' ');
+  return s.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 };
 
-// Slugify layer name for use as GeoJSON property key
 const slugify = (name) => name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
 
 const getColor = (layerName, layerColors) => {
@@ -56,18 +52,41 @@ const getDensityColor = (layerName, layerColors) => {
   return getLayerConfig(layerName).color;
 };
 
+// Haversine distance in miles between two [lon, lat] points
+const haversine = (lon1, lat1, lon2, lat2) => {
+  const R = 3959; // Earth radius in miles
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+// Get approximate centroid of a GeoJSON polygon/multipolygon
+const getCentroid = (geometry) => {
+  let coords = [];
+  if (geometry.type === 'Polygon') {
+    coords = geometry.coordinates[0];
+  } else if (geometry.type === 'MultiPolygon') {
+    coords = geometry.coordinates[0][0];
+  }
+  if (coords.length === 0) return null;
+  let sumLon = 0, sumLat = 0;
+  for (const c of coords) { sumLon += c[0]; sumLat += c[1]; }
+  return [sumLon / coords.length, sumLat / coords.length];
+};
+
 const MapboxVisualization = ({
-  cityData,
-  countyData,
-  wheatData,
+  pointData,
+  densityData,
   activeLayers,
   radiusSettings,
   layerColors = {},
+  winZonesEnabled = false,
   hasData
 }) => {
-  const [viewState, setViewState] = useState({
-    longitude: -97, latitude: 39, zoom: 4, pitch: 0, bearing: 0
-  });
+  const [viewState, setViewState] = useState({ longitude: -97, latitude: 39, zoom: 4, pitch: 0, bearing: 0 });
   const [popupInfo, setPopupInfo] = useState(null);
   const [hoverInfo, setHoverInfo] = useState(null);
   const [mapStyle, setMapStyle] = useState('mapbox://styles/mapbox/light-v11');
@@ -81,7 +100,6 @@ const MapboxVisualization = ({
       .catch(err => console.error('Error loading counties GeoJSON:', err));
   }, []);
 
-  // Which density layers are currently active
   const activeDensityLayers = useMemo(() => {
     return Object.keys(activeLayers).filter(layer => {
       if (!activeLayers[layer]) return false;
@@ -92,94 +110,106 @@ const MapboxVisualization = ({
 
   const hasDensityActive = activeDensityLayers.length > 0;
 
+  // Collect active radius-enabled point positions
+  const activePointPositions = useMemo(() => {
+    if (!pointData || pointData.length === 0) return [];
+    const positions = [];
+    pointData.forEach(city => {
+      let hasActiveRadius = false;
+      Object.keys(city.layers).forEach(layerName => {
+        if (!activeLayers[layerName]) return;
+        const config = getLayerConfig(layerName);
+        if (config.radius?.enabled && city.layers[layerName] > 0) hasActiveRadius = true;
+      });
+      if (hasActiveRadius) {
+        positions.push([city.lon, city.lat]);
+      }
+    });
+    return positions;
+  }, [pointData, activeLayers]);
+
   // Build city markers GeoJSON
   const cityMarkersGeoJSON = useMemo(() => {
-    if (!cityData || cityData.length === 0) return null;
+    if (!pointData || pointData.length === 0) return null;
     const features = [];
-    cityData.forEach((city, idx) => {
-      let dominantLayer = null;
-      let maxVal = 0;
+    pointData.forEach((city, idx) => {
+      let dominantLayer = null, maxVal = 0;
       Object.keys(city.layers).forEach(layerName => {
         if (!activeLayers[layerName]) return;
         if (getLayerConfig(layerName).type !== 'point') return;
-        const value = city.layers[layerName];
-        if (value > 0 && value > maxVal) { maxVal = value; dominantLayer = layerName; }
+        const v = city.layers[layerName];
+        if (v > 0 && v > maxVal) { maxVal = v; dominantLayer = layerName; }
       });
       if (!dominantLayer) return;
       features.push({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [city.lon, city.lat] },
         properties: {
-          id: `city-${idx}`,
-          city: city.city,
-          state: city.state,
-          layer: dominantLayer,
-          value: maxVal,
+          id: `city-${idx}`, city: city.city, state: city.state,
+          layer: dominantLayer, value: maxVal,
           color: getColor(dominantLayer, layerColors),
           allLayers: JSON.stringify(city.layers)
         }
       });
     });
     return { type: 'FeatureCollection', features };
-  }, [cityData, activeLayers, layerColors]);
+  }, [pointData, activeLayers, layerColors]);
 
   // Build radius circles
   const radiusGeoJSON = useMemo(() => {
-    if (!cityData || cityData.length === 0) return null;
+    if (!pointData || pointData.length === 0) return null;
     const features = [];
-    cityData.forEach((city, idx) => {
+    pointData.forEach((city, idx) => {
       Object.keys(city.layers).forEach(layerName => {
         if (!activeLayers[layerName]) return;
-        const value = city.layers[layerName];
-        if (value <= 0) return;
+        if (city.layers[layerName] <= 0) return;
         const config = getLayerConfig(layerName);
         if (!config.radius?.enabled) return;
         const rs = radiusSettings[layerName];
         if (!rs?.visible) return;
         const miles = rs.miles || config.radius.default;
         const cf = circle([city.lon, city.lat], miles, { steps: 64, units: 'miles' });
-        cf.properties = { id: `r-${idx}-${layerName}`, layer: layerName, color: getDensityColor(layerName, layerColors), radiusMiles: miles };
+        cf.properties = { id: `r-${idx}-${layerName}`, layer: layerName, color: getDensityColor(layerName, layerColors) };
         features.push(cf);
       });
     });
     return { type: 'FeatureCollection', features };
-  }, [cityData, activeLayers, radiusSettings, layerColors]);
+  }, [pointData, activeLayers, radiusSettings, layerColors]);
 
-  // Build per-layer enriched county GeoJSON
-  // Each feature gets properties: `val_{slug}` (raw value) and `int_{slug}` (normalized intensity)
-  // for EACH density layer. This allows separate Mapbox fill layers per density layer.
+  // Build per-layer enriched county choropleth + win zone scores
   const enrichedCountiesGeoJSON = useMemo(() => {
     if (!countiesGeoJSON) return null;
 
-    // First pass: build lookup keyed by normalized state|county
-    // Structure: { key: { layerName: value, ... } }
+    // Build lookup
     const dataLookup = {};
-
-    [...(countyData || []), ...(wheatData || [])].forEach(county => {
+    (densityData || []).forEach(county => {
       const state = normalizeStateName(county.state);
       const countyNorm = normalizeCountyName(county.county);
       const key = `${state}|${countyNorm}`;
       if (!dataLookup[key]) dataLookup[key] = {};
-
       Object.keys(county.layers).forEach(layer => {
         const config = getLayerConfig(layer);
         if (config.type !== 'density' && config.type !== 'base') return;
         const value = county.layers[layer] || 0;
-        if (value > 0) {
-          dataLookup[key][layer] = (dataLookup[key][layer] || 0) + value;
-        }
+        if (value > 0) dataLookup[key][layer] = (dataLookup[key][layer] || 0) + value;
       });
     });
 
-    // Compute per-layer max for independent normalization
+    // Per-layer max
     const layerMaxes = {};
     Object.values(dataLookup).forEach(layers => {
-      Object.entries(layers).forEach(([layer, value]) => {
-        if (!layerMaxes[layer] || value > layerMaxes[layer]) layerMaxes[layer] = value;
+      Object.entries(layers).forEach(([l, v]) => {
+        if (!layerMaxes[l] || v > layerMaxes[l]) layerMaxes[l] = v;
       });
     });
 
-    // Enrich features with per-layer properties
+    // Overall density max (for win zone scoring)
+    let overallMax = 1;
+    Object.values(dataLookup).forEach(layers => {
+      const total = Object.values(layers).reduce((s, v) => s + v, 0);
+      if (total > overallMax) overallMax = total;
+    });
+
     const enrichedFeatures = countiesGeoJSON.features.map(feature => {
       const rawName = feature.properties.NAME || '';
       const countyNorm = normalizeCountyName(rawName);
@@ -189,8 +219,6 @@ const MapboxVisualization = ({
 
       const countyLayers = dataLookup[key] || {};
       const extraProps = { state_name: stateName };
-
-      // Per-layer values and intensities
       let totalAllLayers = 0;
       const layerBreakdown = {};
 
@@ -201,7 +229,6 @@ const MapboxVisualization = ({
         let intensity = Math.log(value + 1) / logMax;
         intensity = Math.max(intensity, 0.2);
         intensity = Math.min(intensity * 0.75, 0.8);
-
         extraProps[`val_${slug}`] = value;
         extraProps[`int_${slug}`] = intensity;
         totalAllLayers += value;
@@ -211,6 +238,32 @@ const MapboxVisualization = ({
       extraProps.density_total = totalAllLayers;
       extraProps.density_layers = JSON.stringify(layerBreakdown);
 
+      // Win zone: density score (log normalized)
+      let densityScore = 0;
+      if (totalAllLayers > 0) {
+        densityScore = Math.log(totalAllLayers + 1) / Math.log(overallMax + 1);
+      }
+
+      // Coverage score: inverse distance to nearest point markers
+      let coverageScore = 0;
+      let nearestDist = Infinity;
+      if (activePointPositions.length > 0 && totalAllLayers > 0) {
+        const centroid = getCentroid(feature.geometry);
+        if (centroid) {
+          for (const pos of activePointPositions) {
+            const d = haversine(centroid[0], centroid[1], pos[0], pos[1]);
+            if (d < nearestDist) nearestDist = d;
+          }
+          // Coverage decays: 0 miles = 1.0, 50 miles = 0.5, 200+ miles ≈ 0
+          coverageScore = Math.max(0, 1 - (nearestDist / 200));
+        }
+      }
+
+      // Win score: high density + low coverage = hot
+      const winScore = densityScore * (1 - coverageScore);
+      extraProps.win_score = winScore;
+      extraProps.nearest_point_miles = nearestDist === Infinity ? -1 : Math.round(nearestDist);
+
       return {
         ...feature,
         properties: { ...feature.properties, ...extraProps }
@@ -218,14 +271,14 @@ const MapboxVisualization = ({
     });
 
     return { type: 'FeatureCollection', features: enrichedFeatures };
-  }, [countiesGeoJSON, countyData, wheatData]);
+  }, [countiesGeoJSON, densityData, activePointPositions]);
 
   // Click handler
   const onMapClick = useCallback((event) => {
     const features = event.features;
     if (!features || features.length === 0) { setPopupInfo(null); return; }
-
     const feature = features[0];
+
     if (feature.layer.id === 'city-markers-unclustered') {
       setPopupInfo({
         type: 'city',
@@ -238,7 +291,8 @@ const MapboxVisualization = ({
     } else if (feature.layer.id === 'clusters') {
       const map = mapRef.current?.getMap();
       if (map) map.easeTo({ center: feature.geometry.coordinates, zoom: viewState.zoom + 2 });
-    } else if (feature.layer.id.startsWith('county-fill-') && feature.properties.density_total > 0) {
+    } else if ((feature.layer.id.startsWith('county-fill-') || feature.layer.id === 'win-zone-fill') && feature.properties.density_total > 0) {
+      const nearestMiles = feature.properties.nearest_point_miles;
       setPopupInfo({
         type: 'county',
         longitude: event.lngLat.lng,
@@ -246,7 +300,9 @@ const MapboxVisualization = ({
         county: feature.properties.NAME,
         state: feature.properties.state_name,
         total: feature.properties.density_total,
-        layers: JSON.parse(feature.properties.density_layers || '{}')
+        layers: JSON.parse(feature.properties.density_layers || '{}'),
+        winScore: feature.properties.win_score,
+        nearestMiles: nearestMiles >= 0 ? nearestMiles : null
       });
     }
   }, [viewState.zoom]);
@@ -255,31 +311,34 @@ const MapboxVisualization = ({
   const onMouseMove = useCallback((event) => {
     const features = event.features;
     if (!features || features.length === 0) { setHoverInfo(null); return; }
-
     const feature = features[0];
+
     if (feature.layer.id === 'city-markers-unclustered') {
       setHoverInfo({
         type: 'city', x: event.point.x, y: event.point.y,
         city: feature.properties.city, state: feature.properties.state,
         layer: feature.properties.layer, value: feature.properties.value
       });
-    } else if (feature.layer.id.startsWith('county-fill-') && feature.properties.density_total > 0) {
-      // Show per-layer breakdown in hover
+    } else if ((feature.layer.id.startsWith('county-fill-') || feature.layer.id === 'win-zone-fill') && feature.properties.density_total > 0) {
       const layers = JSON.parse(feature.properties.density_layers || '{}');
       const activeParts = Object.entries(layers)
         .filter(([l]) => activeLayers[l])
         .map(([l, v]) => `${l}: ${v.toLocaleString()}`)
         .join(' | ');
+      const nearestMiles = feature.properties.nearest_point_miles;
+      const winPct = Math.round((feature.properties.win_score || 0) * 100);
       setHoverInfo({
         type: 'county', x: event.point.x, y: event.point.y,
         county: feature.properties.NAME, state: feature.properties.state_name,
         total: feature.properties.density_total,
-        detail: activeParts
+        detail: activeParts,
+        winScore: winZonesEnabled ? winPct : null,
+        nearestMiles: winZonesEnabled && nearestMiles >= 0 ? nearestMiles : null
       });
     } else {
       setHoverInfo(null);
     }
-  }, [activeLayers]);
+  }, [activeLayers, winZonesEnabled]);
 
   const onMouseLeave = useCallback(() => setHoverInfo(null), []);
 
@@ -292,7 +351,6 @@ const MapboxVisualization = ({
   };
   const isSatellite = mapStyle.includes('satellite');
 
-  // Radius color expression
   const radiusColorExpr = useMemo(() => {
     const entries = [];
     Object.keys(activeLayers).forEach(layer => {
@@ -302,7 +360,6 @@ const MapboxVisualization = ({
     return entries.length === 0 ? '#888888' : ['match', ['get', 'layer'], ...entries, '#888888'];
   }, [activeLayers, layerColors]);
 
-  // Marker color expression
   const markerColorExpr = useMemo(() => {
     const entries = [];
     Object.keys(activeLayers).forEach(layer => {
@@ -312,14 +369,12 @@ const MapboxVisualization = ({
     return entries.length === 0 ? '#888888' : ['match', ['get', 'layer'], ...entries, '#888888'];
   }, [activeLayers, layerColors]);
 
-  // Interactive layer IDs (includes per-density-layer fill IDs)
   const interactiveIds = useMemo(() => {
     const ids = ['city-markers-unclustered', 'clusters'];
-    activeDensityLayers.forEach(layer => {
-      ids.push(`county-fill-${slugify(layer)}`);
-    });
+    activeDensityLayers.forEach(l => ids.push(`county-fill-${slugify(l)}`));
+    if (winZonesEnabled) ids.push('win-zone-fill');
     return ids;
-  }, [activeDensityLayers]);
+  }, [activeDensityLayers, winZonesEnabled]);
 
   const cursor = hoverInfo ? 'pointer' : 'grab';
 
@@ -328,12 +383,8 @@ const MapboxVisualization = ({
       {!hasData ? (
         <div className="absolute inset-0 flex items-center justify-center bg-stone-100">
           <div className="text-center p-8">
-            <h2 className="text-2xl font-semibold text-stone-900 mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
-              Upload Data to Begin
-            </h2>
-            <p className="text-sm text-stone-500" style={{ fontFamily: 'IBM Plex Sans, sans-serif' }}>
-              Upload your CSV files to visualize opportunities on the map
-            </p>
+            <h2 className="text-2xl font-semibold text-stone-900 mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>Upload Data to Begin</h2>
+            <p className="text-sm text-stone-500" style={{ fontFamily: 'IBM Plex Sans, sans-serif' }}>Upload your CSV files to visualize opportunities on the map</p>
           </div>
         </div>
       ) : (
@@ -353,15 +404,13 @@ const MapboxVisualization = ({
           >
             <NavigationControl position="top-left" />
 
-            {/* County choropleth — one fill layer PER active density layer */}
+            {/* County choropleth — per-layer density fills */}
             {hasDensityActive && enrichedCountiesGeoJSON && (
               <Source id="counties" type="geojson" data={enrichedCountiesGeoJSON}>
                 {activeDensityLayers.map(layer => {
                   const slug = slugify(layer);
                   const color = getDensityColor(layer, layerColors);
-                  const valProp = `val_${slug}`;
                   const intProp = `int_${slug}`;
-
                   return (
                     <Layer
                       key={`county-fill-${slug}`}
@@ -369,130 +418,92 @@ const MapboxVisualization = ({
                       type="fill"
                       paint={{
                         'fill-color': color,
-                        'fill-opacity': [
-                          'case',
-                          ['>', ['coalesce', ['get', intProp], 0], 0],
-                          ['get', intProp],
-                          0
-                        ]
+                        'fill-opacity': ['case', ['>', ['coalesce', ['get', intProp], 0], 0], ['get', intProp], 0]
                       }}
                     />
                   );
                 })}
+                <Layer id="county-outline" type="line" paint={{ 'line-color': '#A8A29E', 'line-width': 0.3 }} />
+              </Source>
+            )}
+
+            {/* Win Zones heatmap overlay */}
+            {winZonesEnabled && enrichedCountiesGeoJSON && (
+              <Source id="win-zones" type="geojson" data={enrichedCountiesGeoJSON}>
                 <Layer
-                  id="county-outline"
-                  type="line"
-                  paint={{ 'line-color': '#A8A29E', 'line-width': 0.3 }}
+                  id="win-zone-fill"
+                  type="fill"
+                  paint={{
+                    'fill-color': [
+                      'interpolate', ['linear'], ['coalesce', ['get', 'win_score'], 0],
+                      0, 'rgba(0,0,0,0)',
+                      0.05, 'rgba(0,0,0,0)',
+                      0.15, '#FEF3C7',
+                      0.3, '#FBBF24',
+                      0.5, '#F97316',
+                      0.7, '#DC2626',
+                      0.9, '#991B1B'
+                    ],
+                    'fill-opacity': [
+                      'case',
+                      ['>', ['coalesce', ['get', 'win_score'], 0], 0.05],
+                      0.6,
+                      0
+                    ]
+                  }}
                 />
               </Source>
             )}
 
-            {/* State / Province borders — bold dark lines */}
-            <Source
-              id="state-borders"
-              type="geojson"
-              data="https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json"
-            >
-              <Layer
-                id="state-lines"
-                type="line"
-                paint={{
-                  'line-color': '#1C1917',
-                  'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1.4, 6, 2.2, 10, 3],
-                  'line-opacity': 0.7
-                }}
-              />
+            {/* State / Province borders */}
+            <Source id="state-borders" type="geojson" data="https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json">
+              <Layer id="state-lines" type="line" paint={{
+                'line-color': '#1C1917',
+                'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1.4, 6, 2.2, 10, 3],
+                'line-opacity': 0.7
+              }} />
             </Source>
-            <Source
-              id="canada-borders"
-              type="geojson"
-              data="https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/canada.geojson"
-            >
-              <Layer
-                id="canada-lines"
-                type="line"
-                paint={{
-                  'line-color': '#1C1917',
-                  'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1.4, 6, 2.2, 10, 3],
-                  'line-opacity': 0.7
-                }}
-              />
+            <Source id="canada-borders" type="geojson" data="https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/canada.geojson">
+              <Layer id="canada-lines" type="line" paint={{
+                'line-color': '#1C1917',
+                'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1.4, 6, 2.2, 10, 3],
+                'line-opacity': 0.7
+              }} />
             </Source>
 
             {/* Radius circles */}
             {radiusGeoJSON && radiusGeoJSON.features.length > 0 && (
               <Source id="radius-circles" type="geojson" data={radiusGeoJSON}>
-                <Layer
-                  id="radius-fill"
-                  type="fill"
-                  paint={{ 'fill-color': radiusColorExpr, 'fill-opacity': 0.12 }}
-                />
-                <Layer
-                  id="radius-outline"
-                  type="line"
-                  paint={{ 'line-color': radiusColorExpr, 'line-width': 1.5, 'line-opacity': 0.5 }}
-                />
+                <Layer id="radius-fill" type="fill" paint={{ 'fill-color': radiusColorExpr, 'fill-opacity': 0.12 }} />
+                <Layer id="radius-outline" type="line" paint={{ 'line-color': radiusColorExpr, 'line-width': 1.5, 'line-opacity': 0.5 }} />
               </Source>
             )}
 
             {/* City markers with clustering */}
             {cityMarkersGeoJSON && cityMarkersGeoJSON.features.length > 0 && (
-              <Source
-                id="city-markers-source"
-                type="geojson"
-                data={cityMarkersGeoJSON}
-                cluster={true}
-                clusterMaxZoom={12}
-                clusterRadius={50}
-              >
-                <Layer
-                  id="clusters"
-                  type="circle"
-                  filter={['has', 'point_count']}
-                  paint={{
-                    'circle-color': ['step', ['get', 'point_count'], '#57534E', 10, '#44403C', 50, '#292524', 200, '#1C1917'],
-                    'circle-radius': ['step', ['get', 'point_count'], 16, 10, 22, 50, 28, 200, 34],
-                    'circle-stroke-width': 2,
-                    'circle-stroke-color': '#FFFFFF'
-                  }}
-                />
-                <Layer
-                  id="cluster-count"
-                  type="symbol"
-                  filter={['has', 'point_count']}
-                  layout={{
-                    'text-field': '{point_count_abbreviated}',
-                    'text-size': 12,
-                    'text-font': ['DIN Pro Medium', 'Arial Unicode MS Bold']
-                  }}
+              <Source id="city-markers-source" type="geojson" data={cityMarkersGeoJSON} cluster={true} clusterMaxZoom={12} clusterRadius={50}>
+                <Layer id="clusters" type="circle" filter={['has', 'point_count']} paint={{
+                  'circle-color': ['step', ['get', 'point_count'], '#57534E', 10, '#44403C', 50, '#292524', 200, '#1C1917'],
+                  'circle-radius': ['step', ['get', 'point_count'], 16, 10, 22, 50, 28, 200, 34],
+                  'circle-stroke-width': 2, 'circle-stroke-color': '#FFFFFF'
+                }} />
+                <Layer id="cluster-count" type="symbol" filter={['has', 'point_count']}
+                  layout={{ 'text-field': '{point_count_abbreviated}', 'text-size': 12, 'text-font': ['DIN Pro Medium', 'Arial Unicode MS Bold'] }}
                   paint={{ 'text-color': '#FFFFFF' }}
                 />
-                <Layer
-                  id="city-markers-unclustered"
-                  type="circle"
-                  filter={['!', ['has', 'point_count']]}
-                  paint={{
-                    'circle-radius': ['interpolate', ['linear'], ['get', 'value'], 0, 5, 10, 7, 50, 10, 200, 14],
-                    'circle-color': markerColorExpr,
-                    'circle-opacity': 0.85,
-                    'circle-stroke-width': 2,
-                    'circle-stroke-color': '#FFFFFF'
-                  }}
-                />
+                <Layer id="city-markers-unclustered" type="circle" filter={['!', ['has', 'point_count']]} paint={{
+                  'circle-radius': ['interpolate', ['linear'], ['get', 'value'], 0, 5, 10, 7, 50, 10, 200, 14],
+                  'circle-color': markerColorExpr,
+                  'circle-opacity': 0.85, 'circle-stroke-width': 2, 'circle-stroke-color': '#FFFFFF'
+                }} />
               </Source>
             )}
 
             {/* Click popup */}
             {popupInfo && (
-              <Popup
-                longitude={popupInfo.longitude}
-                latitude={popupInfo.latitude}
-                anchor="bottom"
-                onClose={() => setPopupInfo(null)}
-                closeButton={true}
-                closeOnClick={false}
-              >
-                <div className="p-1 min-w-[160px]" data-testid="map-popup">
+              <Popup longitude={popupInfo.longitude} latitude={popupInfo.latitude} anchor="bottom"
+                onClose={() => setPopupInfo(null)} closeButton={true} closeOnClick={false}>
+                <div className="p-1 min-w-[180px]" data-testid="map-popup">
                   {popupInfo.type === 'city' && (
                     <>
                       <div className="text-sm font-semibold text-stone-900">{popupInfo.city}, {popupInfo.state}</div>
@@ -522,6 +533,18 @@ const MapboxVisualization = ({
                           </div>
                         ))}
                       </div>
+                      {popupInfo.nearestMiles != null && (
+                        <div className="mt-2 pt-2 border-t border-stone-200">
+                          <div className="text-xs text-stone-500 flex justify-between">
+                            <span>Nearest point:</span>
+                            <span className="font-medium">{popupInfo.nearestMiles} mi</span>
+                          </div>
+                          <div className="text-xs flex justify-between mt-0.5">
+                            <span className="text-orange-600 font-medium">Win Score:</span>
+                            <span className="font-bold text-orange-700">{Math.round((popupInfo.winScore || 0) * 100)}%</span>
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -543,12 +566,17 @@ const MapboxVisualization = ({
                 <div>
                   <div className="font-medium">{hoverInfo.county} Co., {hoverInfo.state}</div>
                   {hoverInfo.detail && <div className="opacity-80 mt-0.5">{hoverInfo.detail}</div>}
+                  {hoverInfo.winScore != null && (
+                    <div className="mt-0.5 text-orange-300">
+                      Win: {hoverInfo.winScore}% {hoverInfo.nearestMiles != null && `· ${hoverInfo.nearestMiles}mi to nearest`}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
 
-          {/* Map style toggle */}
+          {/* Map controls */}
           <button
             onClick={toggleMapStyle}
             className="absolute top-4 left-14 bg-white border border-stone-300 rounded px-3 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50 shadow-sm z-10"
@@ -556,6 +584,25 @@ const MapboxVisualization = ({
           >
             {isSatellite ? 'Street View' : 'Satellite'}
           </button>
+
+          {/* Win Zones legend */}
+          {winZonesEnabled && (
+            <div className="absolute bottom-8 left-4 bg-white/95 backdrop-blur-sm border border-stone-200 rounded-lg px-3 py-2 shadow-md z-10" data-testid="win-zones-legend">
+              <div className="text-[10px] font-semibold text-stone-600 uppercase tracking-wider mb-1.5">Win Zone Score</div>
+              <div className="flex items-center gap-1">
+                <span className="text-[9px] text-stone-400">Low</span>
+                <div className="flex h-2.5 rounded-full overflow-hidden flex-1">
+                  <div className="flex-1 bg-amber-100" />
+                  <div className="flex-1 bg-amber-400" />
+                  <div className="flex-1 bg-orange-500" />
+                  <div className="flex-1 bg-red-600" />
+                  <div className="flex-1 bg-red-900" />
+                </div>
+                <span className="text-[9px] text-stone-400">High</span>
+              </div>
+              <div className="text-[9px] text-stone-400 mt-1">High density + far from existing points</div>
+            </div>
+          )}
         </>
       )}
     </div>

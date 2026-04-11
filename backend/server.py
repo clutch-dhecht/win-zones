@@ -6,7 +6,7 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Dict, Any
+from typing import List, Dict
 import uuid
 from datetime import datetime, timezone
 import pandas as pd
@@ -28,7 +28,6 @@ US_CITIES_DF = pd.read_csv(ROOT_DIR / 'us_cities_coordinates.csv')
 US_CITIES_DF['CITY_UPPER'] = US_CITIES_DF['CITY'].str.upper()
 US_CITIES_DF['STATE_UPPER'] = US_CITIES_DF['STATE_NAME'].str.upper()
 
-# Cache for geocoded cities
 geocode_cache = {}
 
 class StatusCheck(BaseModel):
@@ -39,20 +38,6 @@ class StatusCheck(BaseModel):
 
 class StatusCheckCreate(BaseModel):
     client_name: str
-
-class CityDataPoint(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    state: str
-    city: str
-    lat: float
-    lon: float
-    layers: Dict[str, int]
-
-class CountyDataPoint(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    state: str
-    county: str
-    layers: Dict[str, int]
 
 @api_router.get("/")
 async def root():
@@ -76,58 +61,51 @@ async def get_status_checks():
     return status_checks
 
 def geocode_city_advanced(city, state):
-    """Enhanced geocoding using comprehensive US cities database"""
     cache_key = f"{city.upper()},{state.upper()}"
-    
-    # Check cache first
     if cache_key in geocode_cache:
         return geocode_cache[cache_key]
-    
+
     city_upper = city.upper().strip()
     state_upper = state.upper().strip()
-    
-    # Try exact match on city and state
+
     matches = US_CITIES_DF[
-        (US_CITIES_DF['CITY_UPPER'] == city_upper) & 
+        (US_CITIES_DF['CITY_UPPER'] == city_upper) &
         (US_CITIES_DF['STATE_UPPER'] == state_upper)
     ]
-    
     if not matches.empty:
         row = matches.iloc[0]
         coords = {'lat': float(row['LATITUDE']), 'lon': float(row['LONGITUDE'])}
         geocode_cache[cache_key] = coords
         return coords
-    
-    # Try without exact state match (in case state name is different format)
+
     matches = US_CITIES_DF[US_CITIES_DF['CITY_UPPER'] == city_upper]
     if not matches.empty:
         row = matches.iloc[0]
         coords = {'lat': float(row['LATITUDE']), 'lon': float(row['LONGITUDE'])}
         geocode_cache[cache_key] = coords
         return coords
-    
+
     geocode_cache[cache_key] = None
     return None
 
-@api_router.post("/upload/city")
-async def upload_city_data(file: UploadFile = File(...)):
-    """Upload and process city-level CSV data"""
+# ── POINT DATA (City, State + numeric layers) ──
+
+@api_router.post("/upload/point")
+async def upload_point_data(file: UploadFile = File(...)):
+    """Upload point-level CSV data (City/State with numeric layers)"""
     try:
         contents = await file.read()
         df = pd.read_csv(io.BytesIO(contents))
-        
+
         if 'State' not in df.columns or 'City' not in df.columns:
             raise HTTPException(status_code=400, detail="CSV must have 'State' and 'City' columns")
-        
-        # Filter to US states only
+
         df = df[df['State'].apply(is_us_state)]
-        
-        # Get layer columns
         layer_columns = [col for col in df.columns if col not in ['State', 'City']]
-        
+
         processed_data = []
         skipped_count = 0
-        
+
         for idx, row in df.iterrows():
             geo = geocode_city_advanced(row['City'], row['State'])
             if geo:
@@ -141,177 +119,168 @@ async def upload_city_data(file: UploadFile = File(...)):
                 })
             else:
                 skipped_count += 1
-            
-            # Progress logging every 50 cities
+
             if (idx + 1) % 50 == 0:
-                logging.info(f"Geocoding progress: {idx + 1}/{len(df)} cities, {len(processed_data)} successful")
-        
-        # Store in MongoDB
-        await db.city_data.delete_many({})
+                logging.info(f"Geocoding progress: {idx + 1}/{len(df)}, {len(processed_data)} successful")
+
+        await db.point_data.delete_many({})
         if processed_data:
-            await db.city_data.insert_many(processed_data)
-        
-        logging.info(f"City upload complete: {len(processed_data)} geocoded, {skipped_count} skipped")
-        
-        return {
-            "success": True,
-            "processed": len(processed_data),
-            "skipped": skipped_count,
-            "layers": layer_columns
-        }
+            await db.point_data.insert_many(processed_data)
+
+        logging.info(f"Point upload: {len(processed_data)} geocoded, {skipped_count} skipped")
+        return {"success": True, "processed": len(processed_data), "skipped": skipped_count, "layers": layer_columns}
     except Exception as e:
-        logging.error(f"Error processing city data: {str(e)}")
+        logging.error(f"Error processing point data: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@api_router.post("/upload/county")
-async def upload_county_data(file: UploadFile = File(...)):
-    """Upload and process county-level CSV data"""
-    try:
-        contents = await file.read()
-        df = pd.read_csv(io.BytesIO(contents))
-        
-        if 'State' not in df.columns or 'County' not in df.columns:
-            raise HTTPException(status_code=400, detail="CSV must have 'State' and 'County' columns")
-        
-        # Filter to US states only
-        df = df[df['State'].apply(is_us_state)]
-        
-        # Get layer columns
-        layer_columns = [col for col in df.columns if col not in ['State', 'County']]
-        
-        processed_data = []
-        for _, row in df.iterrows():
-            layers = {col: int(row[col]) if pd.notna(row[col]) else 0 for col in layer_columns}
-            processed_data.append({
-                'state': row['State'],
-                'county': row['County'].upper(),
-                'layers': layers
-            })
-        
-        # Store in MongoDB
-        await db.county_data.delete_many({})
-        if processed_data:
-            await db.county_data.insert_many(processed_data)
-        
-        return {
-            "success": True,
-            "processed": len(processed_data),
-            "layers": layer_columns
-        }
-    except Exception as e:
-        logging.error(f"Error processing county data: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+# Keep legacy endpoint for backwards compat with existing data
+@api_router.post("/upload/city")
+async def upload_city_data(file: UploadFile = File(...)):
+    return await upload_point_data(file)
+
+@api_router.get("/data/point")
+async def get_point_data():
+    """Get all point data. Checks new collection first, falls back to legacy."""
+    data = await db.point_data.find({}, {"_id": 0}).to_list(10000)
+    if not data:
+        data = await db.city_data.find({}, {"_id": 0}).to_list(10000)
+    return {"data": data}
 
 @api_router.get("/data/city")
 async def get_city_data():
-    """Get all city data with geocoding"""
-    data = await db.city_data.find({}, {"_id": 0}).to_list(10000)
-    return {"data": data}
+    return await get_point_data()
 
-@api_router.get("/data/county")
-async def get_county_data():
-    """Get all county data"""
-    data = await db.county_data.find({}, {"_id": 0}).to_list(10000)
-    return {"data": data}
+# ── DENSITY DATA (County, State + numeric layers) ──
 
-@api_router.post("/upload/wheat")
-async def upload_wheat_data(file: UploadFile = File(...)):
-    """Upload and process wheat acres CSV data"""
+@api_router.post("/upload/density")
+async def upload_density_data(file: UploadFile = File(...)):
+    """Upload county-level density CSV data (County/State with numeric layers).
+    Handles comma-formatted numbers automatically."""
     try:
         contents = await file.read()
         df = pd.read_csv(io.BytesIO(contents))
-        
+
         if 'State' not in df.columns or 'County' not in df.columns:
             raise HTTPException(status_code=400, detail="CSV must have 'State' and 'County' columns")
-        
-        # Get layer columns
+
         layer_columns = [col for col in df.columns if col not in ['State', 'County']]
-        
+
         processed_data = []
         for _, row in df.iterrows():
-            # Skip if state is not a valid US state
             state_val = str(row['State']).strip()
             if not is_us_state(state_val):
                 continue
-                
+
             layers = {}
             for col in layer_columns:
-                # Handle comma-formatted numbers
                 value = row[col]
                 if isinstance(value, str):
                     value = value.replace(',', '')
                 layers[col] = int(float(value)) if pd.notna(value) else 0
-            
+
             processed_data.append({
                 'state': state_val,
                 'county': str(row['County']).upper().strip(),
                 'layers': layers
             })
-        
-        # Store in MongoDB
-        await db.wheat_data.delete_many({})
-        if processed_data:
-            await db.wheat_data.insert_many(processed_data)
-        
-        return {
-            "success": True,
-            "processed": len(processed_data),
-            "layers": layer_columns
-        }
+
+        # Merge with existing density data: load existing, merge layers, save
+        existing = await db.density_data.find({}, {"_id": 0}).to_list(50000)
+        existing_lookup = {}
+        for doc in existing:
+            key = f"{doc['state']}|{doc['county']}"
+            existing_lookup[key] = doc
+
+        # Merge new data into existing
+        for item in processed_data:
+            key = f"{item['state']}|{item['county']}"
+            if key in existing_lookup:
+                # Merge layers (new layers overwrite existing for same name)
+                existing_lookup[key]['layers'].update(item['layers'])
+            else:
+                existing_lookup[key] = item
+
+        merged = list(existing_lookup.values())
+
+        await db.density_data.delete_many({})
+        if merged:
+            await db.density_data.insert_many(merged)
+
+        # Collect all layer names across merged data
+        all_layers = set()
+        for d in merged:
+            all_layers.update(d['layers'].keys())
+
+        logging.info(f"Density upload: {len(processed_data)} new records merged into {len(merged)} total")
+        return {"success": True, "processed": len(processed_data), "total": len(merged), "layers": sorted(all_layers)}
     except Exception as e:
-        logging.error(f"Error processing wheat data: {str(e)}")
+        logging.error(f"Error processing density data: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# Legacy endpoints
+@api_router.post("/upload/county")
+async def upload_county_data(file: UploadFile = File(...)):
+    return await upload_density_data(file)
+
+@api_router.post("/upload/wheat")
+async def upload_wheat_data(file: UploadFile = File(...)):
+    return await upload_density_data(file)
+
+@api_router.get("/data/density")
+async def get_density_data():
+    """Get all density data. Checks new collection first, falls back to legacy merge."""
+    data = await db.density_data.find({}, {"_id": 0}).to_list(50000)
+    if not data:
+        # Fallback: merge old county_data + wheat_data
+        county = await db.county_data.find({}, {"_id": 0}).to_list(10000)
+        wheat = await db.wheat_data.find({}, {"_id": 0}).to_list(10000)
+        lookup = {}
+        for doc in county + wheat:
+            key = f"{doc['state']}|{doc['county']}"
+            if key in lookup:
+                lookup[key]['layers'].update(doc['layers'])
+            else:
+                lookup[key] = doc
+        data = list(lookup.values())
+    return {"data": data}
+
+@api_router.get("/data/county")
+async def get_county_data():
+    return await get_density_data()
 
 @api_router.get("/data/wheat")
 async def get_wheat_data():
-    """Get all wheat data"""
-    data = await db.wheat_data.find({}, {"_id": 0}).to_list(10000)
-    return {"data": data}
+    return await get_density_data()
+
+# ── ANALYTICS ──
 
 @api_router.get("/analytics/top-zones")
 async def get_top_zones(layers: str = ""):
-    """Calculate top opportunity zones based on active layers"""
     try:
         active_layers = layers.split(',') if layers else []
-        
-        # Get all data
-        city_data = await db.city_data.find({}, {"_id": 0}).to_list(10000)
-        county_data = await db.county_data.find({}, {"_id": 0}).to_list(10000)
-        wheat_data = await db.wheat_data.find({}, {"_id": 0}).to_list(10000)
-        
-        # Aggregate by state
+
+        point_data = (await get_point_data())['data']
+        density_data = (await get_density_data())['data']
+
         state_totals = {}
-        
-        for city in city_data:
-            state = city['state']
+
+        for item in point_data:
+            state = item['state']
             if state not in state_totals:
                 state_totals[state] = 0
-            
-            for layer, value in city['layers'].items():
+            for layer, value in item['layers'].items():
                 if not active_layers or layer in active_layers:
                     state_totals[state] += value
-        
-        for county in county_data:
-            state = county['state']
+
+        for item in density_data:
+            state = item['state']
             if state not in state_totals:
                 state_totals[state] = 0
-            
-            for layer, value in county['layers'].items():
+            for layer, value in item['layers'].items():
                 if not active_layers or layer in active_layers:
                     state_totals[state] += value
-        
-        for wheat in wheat_data:
-            state = wheat['state']
-            if state not in state_totals:
-                state_totals[state] = 0
-            
-            for layer, value in wheat['layers'].items():
-                if not active_layers or layer in active_layers:
-                    state_totals[state] += value
-        
-        # Sort and get top 10
+
         top_zones = sorted(state_totals.items(), key=lambda x: x[1], reverse=True)[:10]
-        
         return {
             "top_zones": [{"state": state, "total": total} for state, total in top_zones],
             "total_count": sum(state_totals.values())

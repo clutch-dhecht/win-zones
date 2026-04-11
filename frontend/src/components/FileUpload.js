@@ -1,26 +1,22 @@
 import React, { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Upload, FileUp } from 'lucide-react';
+import { FileUp } from 'lucide-react';
 
 const FILE_TYPES = [
-  { value: 'city', label: 'City Data', description: 'City/State with point layers' },
-  { value: 'county', label: 'County Data', description: 'County/State with density layers' },
-  { value: 'wheat', label: 'Wheat Acres', description: 'County/State acreage data' },
+  { value: 'point', label: 'Point Data', description: 'City/State with markers' },
+  { value: 'density', label: 'Density Data', description: 'County/State choropleth' },
 ];
 
-const FileUpload = ({ onCityUpload, onCountyUpload, onWheatUpload, loading }) => {
-  const [selectedType, setSelectedType] = useState('city');
+const FileUpload = ({ onPointUpload, onDensityUpload, loading }) => {
+  const [selectedType, setSelectedType] = useState('point');
   const fileInputRef = useRef(null);
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    if (selectedType === 'city') onCityUpload(file);
-    else if (selectedType === 'county') onCountyUpload(file);
-    else if (selectedType === 'wheat') onWheatUpload(file);
-
+    if (selectedType === 'point') onPointUpload(file);
+    else if (selectedType === 'density') onDensityUpload(file);
     e.target.value = '';
   };
 

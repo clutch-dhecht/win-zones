@@ -142,14 +142,15 @@ const LayerGroup = ({ title, layers, activeLayers, onToggle, layerColors, onColo
   );
 };
 
-const LayerControls = ({ allLayers, activeLayers, onToggle, radiusSettings, onRadiusChange, layerColors, onColorChange }) => {
+const LayerControls = ({ allLayers, activeLayers, onToggle, radiusSettings, onRadiusChange, layerColors, onColorChange, winZonesEnabled, onWinZonesToggle, hasPointData, hasDensityData }) => {
   const pointLayerNames = getPointLayers();
   const densityLayerNames = getDensityLayers();
 
-  // Split allLayers into groups
   const pointLayers = allLayers.filter(l => pointLayerNames.includes(l));
   const densityLayers = allLayers.filter(l => densityLayerNames.includes(l));
   const otherLayers = allLayers.filter(l => !pointLayerNames.includes(l) && !densityLayerNames.includes(l));
+
+  const canShowWinZones = hasPointData && hasDensityData;
 
   return (
     <div data-testid="layer-controls">
@@ -188,6 +189,31 @@ const LayerControls = ({ allLayers, activeLayers, onToggle, radiusSettings, onRa
           radiusSettings={radiusSettings}
           onRadiusChange={onRadiusChange}
         />
+      )}
+
+      {/* Win Zones Analysis Toggle */}
+      {canShowWinZones && (
+        <div className="mt-3 pt-3 border-t border-stone-200">
+          <div className="flex items-center gap-2 py-1">
+            <div className="w-3.5 h-3.5 rounded-full flex-shrink-0 bg-gradient-to-r from-orange-500 to-red-600" />
+            <span className={`text-sm flex-1 font-medium ${winZonesEnabled ? 'text-red-700' : 'text-stone-400'}`}>
+              Win Zones
+            </span>
+            <div onClick={(e) => e.stopPropagation()}>
+              <Switch
+                checked={winZonesEnabled}
+                onCheckedChange={onWinZonesToggle}
+                className="scale-75"
+                data-testid="win-zones-toggle"
+              />
+            </div>
+          </div>
+          <p className="text-[10px] text-stone-400 ml-5 leading-tight">
+            {winZonesEnabled
+              ? 'Showing high-density counties with low point coverage'
+              : 'Overlay showing opportunity gaps'}
+          </p>
+        </div>
       )}
     </div>
   );
