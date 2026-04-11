@@ -387,6 +387,38 @@ const MapboxVisualization = ({
               </Source>
             )}
 
+            {/* State / Province borders — bold dark lines */}
+            <Source
+              id="state-borders"
+              type="geojson"
+              data="https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json"
+            >
+              <Layer
+                id="state-lines"
+                type="line"
+                paint={{
+                  'line-color': '#1C1917',
+                  'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1.4, 6, 2.2, 10, 3],
+                  'line-opacity': 0.7
+                }}
+              />
+            </Source>
+            <Source
+              id="canada-borders"
+              type="geojson"
+              data="https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/canada.geojson"
+            >
+              <Layer
+                id="canada-lines"
+                type="line"
+                paint={{
+                  'line-color': '#1C1917',
+                  'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1.4, 6, 2.2, 10, 3],
+                  'line-opacity': 0.7
+                }}
+              />
+            </Source>
+
             {/* Radius circles */}
             {radiusGeoJSON && radiusGeoJSON.features.length > 0 && (
               <Source id="radius-circles" type="geojson" data={radiusGeoJSON}>
