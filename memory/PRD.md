@@ -1,7 +1,7 @@
 # Territory Atlas - Product Requirements Document
 
 ## Problem Statement
-Create an interactive map visualization app for sales territory mapping using CSV datasets (City/State/Counts, County/State/Counts, Wheat Acres). Features: dynamic layer toggling, density choropleth shading for county data, point markers with clustering, toggleable radius circles (25/50/100 miles) for specific layers, and analytics panel.
+Interactive map visualization app for sales territory mapping using CSV datasets (City/State/Counts, County/State/Counts, Wheat Acres). Features: dynamic layer toggling, density choropleth shading for county data, point markers with clustering, toggleable radius circles (25/50/100 miles), customizable layer colors, hover tooltips, and analytics panel.
 
 ## Tech Stack
 - **Frontend**: React 19, TailwindCSS, `react-map-gl` (Mapbox GL JS), `@turf/circle`, Shadcn UI
@@ -13,19 +13,19 @@ Create an interactive map visualization app for sales territory mapping using CS
 ```
 /app/
 ├── backend/
-│   ├── server.py               # FastAPI endpoints, geocoding, data storage
-│   ├── us_cities_data.py       # US state validation
-│   ├── us_cities_coordinates.csv # City geocoding lookup
+│   ├── server.py                       # FastAPI endpoints, geocoding, data storage
+│   ├── us_cities_data.py               # US state validation
+│   ├── us_cities_coordinates.csv       # City geocoding lookup
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── config/layerConfig.js      # Layer types, colors, radius config
+│   │   ├── config/layerConfig.js       # Layer types, colors, radius config
 │   │   ├── components/
-│   │   │   ├── MapboxVisualization.js  # Mapbox GL map with choropleth, clusters, radius
-│   │   │   ├── MapDashboard.js         # Main wrapper, data fetching, state
-│   │   │   ├── LayerControls.js        # Sidebar toggles and radius controls
-│   │   │   ├── FileUpload.js           # CSV upload buttons
-│   │   │   └── Analytics.js            # Top opportunity zones panel
+│   │   │   ├── MapboxVisualization.js   # Mapbox GL with choropleth, clusters, radius, hover
+│   │   │   ├── MapDashboard.js          # Main wrapper, data fetching, state (incl. layerColors)
+│   │   │   ├── LayerControls.js         # Grouped layers, switch toggles, color picker
+│   │   │   ├── FileUpload.js            # Single upload with file type dropdown
+│   │   │   └── Analytics.js             # Top opportunity zones panel
 │   │   ├── App.js
 │   │   └── index.css
 │   ├── package.json
@@ -54,27 +54,32 @@ Create an interactive map visualization app for sales territory mapping using CS
 - `GET /api/data/wheat` - Get all wheat data
 - `GET /api/analytics/top-zones` - Top 10 states aggregated by active layers
 
-## What's Implemented (as of 2026-04-11)
+## What's Implemented
 - [x] CSV file upload and parsing (City, County, Wheat)
 - [x] Local geocoding using comprehensive US cities database
 - [x] Mapbox GL JS map rendering with proper token
 - [x] County choropleth density shading with FIPS-to-State mapping
-- [x] Log-scaled opacity for better visibility across data ranges
+- [x] County name normalization (SAINT/ST, DEKALB, Virginia CITY, apostrophes, hyphens) — 99.1% match rate
+- [x] Log-scaled opacity for visibility across data ranges
 - [x] Point markers with Mapbox native clustering
 - [x] Geographic radius circles using @turf/circle (25/50/100 miles)
-- [x] Layer toggle controls in sidebar
-- [x] Radius toggle and size selector per layer
+- [x] Single file upload with type dropdown selector
+- [x] Layer controls grouped (Point/Density) with collapsible sections
+- [x] Switch toggles with inactive layers faded out (opacity 0.4)
+- [x] Color picker per layer (15 preset colors, updates map in real-time)
+- [x] Hover tooltips on markers and counties
+- [x] Click popups with detailed breakdown
 - [x] Map style toggle (Street/Satellite)
-- [x] Click popups for markers and counties
 - [x] Top opportunity zones analytics panel
 - [x] MongoDB storage for all datasets
 
-## P0 - Next Priority
-- Hover tooltips for markers and counties (highlight on hover)
+## Data Alignment Notes
+- 99.1% county match rate (2347/2368) with normalization
+- 21 remaining unmatched are data quality issues: cross-state county assignments in wheat data, Connecticut planning regions, renamed counties (Oglala Lakota)
 
 ## P1 - Upcoming
-- Backend spatial filtering (bbox viewport queries) for large datasets
-- Individual layer color isolation (toggle density per-layer instead of combined)
+- Per-layer density isolation (toggle individual choropleth layers instead of combined view)
+- Backend spatial filtering (bbox viewport queries) for 100k+ point scaling
 
 ## P2 - Future/Backlog
 - Draw circle/polygon tools for custom territory selection
