@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import FileUpload from './FileUpload';
-import MapVisualization from './MapVisualization';
+import MapboxVisualization from './MapboxVisualization';
 import LayerControls from './LayerControls';
 import Analytics from './Analytics';
 import { toast } from 'sonner';
+import { getLayerConfig } from '../config/layerConfig';
 
 const MapDashboard = ({ apiUrl }) => {
   const [cityData, setCityData] = useState([]);
@@ -12,6 +13,7 @@ const MapDashboard = ({ apiUrl }) => {
   const [wheatData, setWheatData] = useState([]);
   const [allLayers, setAllLayers] = useState([]);
   const [activeLayers, setActiveLayers] = useState({});
+  const [radiusSettings, setRadiusSettings] = useState({});
   const [topZones, setTopZones] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -19,25 +21,31 @@ const MapDashboard = ({ apiUrl }) => {
   const handleCityUpload = async (file) => {
     const formData = new FormData();
     formData.append('file', file);
-    
+
     try {
       setLoading(true);
       const response = await axios.post(`${apiUrl}/upload/city`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      
+
       toast.success(`City data uploaded: ${response.data.processed} cities processed, ${response.data.skipped} skipped`);
-      
-      // Set layers and activate all by default
+
       const layers = response.data.layers || [];
       setAllLayers(prev => [...new Set([...prev, ...layers])]);
       const newActive = { ...activeLayers };
-      layers.forEach(layer => {
-        newActive[layer] = true;
-      });
+      layers.forEach(layer => { newActive[layer] = true; });
       setActiveLayers(newActive);
-      
-      // Fetch the data
+
+      // Init radius settings for radius-capable layers
+      const newRadius = { ...radiusSettings };
+      layers.forEach(layer => {
+        const config = getLayerConfig(layer);
+        if (config.radius?.enabled && !newRadius[layer]) {
+          newRadius[layer] = { visible: false, miles: config.radius.default };
+        }
+      });
+      setRadiusSettings(newRadius);
+
       await fetchCityData();
     } catch (error) {
       toast.error('Failed to upload city data: ' + (error.response?.data?.detail || error.message));
@@ -49,25 +57,21 @@ const MapDashboard = ({ apiUrl }) => {
   const handleCountyUpload = async (file) => {
     const formData = new FormData();
     formData.append('file', file);
-    
+
     try {
       setLoading(true);
       const response = await axios.post(`${apiUrl}/upload/county`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      
+
       toast.success(`County data uploaded: ${response.data.processed} counties processed`);
-      
-      // Set layers and activate all by default
+
       const layers = response.data.layers || [];
       setAllLayers(prev => [...new Set([...prev, ...layers])]);
       const newActive = { ...activeLayers };
-      layers.forEach(layer => {
-        newActive[layer] = true;
-      });
+      layers.forEach(layer => { newActive[layer] = true; });
       setActiveLayers(newActive);
-      
-      // Fetch the data
+
       await fetchCountyData();
     } catch (error) {
       toast.error('Failed to upload county data: ' + (error.response?.data?.detail || error.message));
@@ -79,25 +83,21 @@ const MapDashboard = ({ apiUrl }) => {
   const handleWheatUpload = async (file) => {
     const formData = new FormData();
     formData.append('file', file);
-    
+
     try {
       setLoading(true);
       const response = await axios.post(`${apiUrl}/upload/wheat`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      
+
       toast.success(`Wheat data uploaded: ${response.data.processed} records processed`);
-      
-      // Set layers and activate all by default
+
       const layers = response.data.layers || [];
       setAllLayers(prev => [...new Set([...prev, ...layers])]);
       const newActive = { ...activeLayers };
-      layers.forEach(layer => {
-        newActive[layer] = true;
-      });
+      layers.forEach(layer => { newActive[layer] = true; });
       setActiveLayers(newActive);
-      
-      // Fetch the data
+
       await fetchWheatData();
     } catch (error) {
       toast.error('Failed to upload wheat data: ' + (error.response?.data?.detail || error.message));
@@ -135,14 +135,10 @@ const MapDashboard = ({ apiUrl }) => {
 
   const fetchTopZones = async () => {
     try {
-      const activeLayerNames = Object.keys(activeLayers)
-        .filter(key => activeLayers[key])
-        .map(key => key.replace('city_', '').replace('county_', ''));
-      
+      const activeLayerNames = Object.keys(activeLayers).filter(key => activeLayers[key]);
       const response = await axios.get(`${apiUrl}/analytics/top-zones`, {
         params: { layers: activeLayerNames.join(',') }
       });
-      
       setTopZones(response.data.top_zones || []);
       setTotalCount(response.data.total_count || 0);
     } catch (error) {
@@ -157,7 +153,14 @@ const MapDashboard = ({ apiUrl }) => {
     }));
   };
 
-  // Fetch existing data on mount
+  const handleRadiusChange = (layer, settings) => {
+    setRadiusSettings(prev => ({
+      ...prev,
+      [layer]: settings
+    }));
+  };
+
+  // Load existing data on mount
   useEffect(() => {
     const loadExistingData = async () => {
       try {
@@ -166,46 +169,45 @@ const MapDashboard = ({ apiUrl }) => {
           axios.get(`${apiUrl}/data/county`),
           axios.get(`${apiUrl}/data/wheat`)
         ]);
-        
+
         const cityDataLoaded = cityResponse.data.data || [];
         const countyDataLoaded = countyResponse.data.data || [];
         const wheatDataLoaded = wheatResponse.data.data || [];
-        
+
         let combinedLayers = [];
-        
+
         if (cityDataLoaded.length > 0) {
           setCityData(cityDataLoaded);
-          const layers = Object.keys(cityDataLoaded[0].layers);
-          combinedLayers = [...combinedLayers, ...layers];
+          combinedLayers = [...combinedLayers, ...Object.keys(cityDataLoaded[0].layers)];
         }
-        
         if (countyDataLoaded.length > 0) {
           setCountyData(countyDataLoaded);
-          const layers = Object.keys(countyDataLoaded[0].layers);
-          combinedLayers = [...combinedLayers, ...layers];
+          combinedLayers = [...combinedLayers, ...Object.keys(countyDataLoaded[0].layers)];
         }
-        
         if (wheatDataLoaded.length > 0) {
           setWheatData(wheatDataLoaded);
-          const layers = Object.keys(wheatDataLoaded[0].layers);
-          combinedLayers = [...combinedLayers, ...layers];
+          combinedLayers = [...combinedLayers, ...Object.keys(wheatDataLoaded[0].layers)];
         }
-        
-        // Remove duplicates and set all layers
+
         const uniqueLayers = [...new Set(combinedLayers)];
         setAllLayers(uniqueLayers);
-        
-        // Activate all layers by default
+
         const newActive = {};
+        const newRadius = {};
         uniqueLayers.forEach(layer => {
           newActive[layer] = true;
+          const config = getLayerConfig(layer);
+          if (config.radius?.enabled) {
+            newRadius[layer] = { visible: false, miles: config.radius.default };
+          }
         });
         setActiveLayers(newActive);
+        setRadiusSettings(newRadius);
       } catch (error) {
         console.error('Error loading existing data:', error);
       }
     };
-    
+
     loadExistingData();
   }, [apiUrl]);
 
@@ -254,6 +256,8 @@ const MapDashboard = ({ apiUrl }) => {
                 allLayers={allLayers}
                 activeLayers={activeLayers}
                 onToggle={toggleLayer}
+                radiusSettings={radiusSettings}
+                onRadiusChange={handleRadiusChange}
               />
             </div>
           )}
@@ -272,11 +276,12 @@ const MapDashboard = ({ apiUrl }) => {
 
       {/* Main Map Area */}
       <div className="flex-grow relative h-full bg-stone-50 flex flex-col">
-        <MapVisualization
+        <MapboxVisualization
           cityData={cityData}
           countyData={countyData}
           wheatData={wheatData}
           activeLayers={activeLayers}
+          radiusSettings={radiusSettings}
           hasData={hasData}
         />
       </div>
