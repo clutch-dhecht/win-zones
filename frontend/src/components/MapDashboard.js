@@ -15,6 +15,7 @@ const MapDashboard = ({ apiUrl }) => {
   const [radiusSettings, setRadiusSettings] = useState({});
   const [layerColors, setLayerColors] = useState({});
   const [winZonesEnabled, setWinZonesEnabled] = useState(false);
+  const [winZoneRankings, setWinZoneRankings] = useState([]);
   const [topZones, setTopZones] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -220,7 +221,12 @@ const MapDashboard = ({ apiUrl }) => {
               <label className="text-[10px] tracking-[0.08em] uppercase font-semibold text-stone-400 block mb-2">
                 Top Opportunity Zones
               </label>
-              <Analytics topZones={topZones} totalCount={totalCount} />
+              <Analytics
+                topZones={topZones}
+                totalCount={totalCount}
+                winZonesEnabled={winZonesEnabled}
+                winZoneRankings={winZoneRankings}
+              />
             </div>
           )}
         </div>
@@ -235,6 +241,7 @@ const MapDashboard = ({ apiUrl }) => {
           radiusSettings={radiusSettings}
           layerColors={layerColors}
           winZonesEnabled={winZonesEnabled}
+          onWinZoneRankings={setWinZoneRankings}
           hasData={hasData}
         />
       </div>

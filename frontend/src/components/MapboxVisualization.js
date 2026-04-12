@@ -84,6 +84,7 @@ const MapboxVisualization = ({
   radiusSettings,
   layerColors = {},
   winZonesEnabled = false,
+  onWinZoneRankings,
   hasData
 }) => {
   const [viewState, setViewState] = useState({ longitude: -97, latitude: 39, zoom: 4, pitch: 0, bearing: 0 });
@@ -238,16 +239,28 @@ const MapboxVisualization = ({
       extraProps.density_total = totalAllLayers;
       extraProps.density_layers = JSON.stringify(layerBreakdown);
 
-      // Win zone: density score (log normalized)
+      // Win zone: density score based on ACTIVE layers only
+      let activeDensityTotal = 0;
+      activeDensityLayers.forEach(layer => {
+        if (layerBreakdown[layer]) activeDensityTotal += layerBreakdown[layer];
+      });
+
       let densityScore = 0;
-      if (totalAllLayers > 0) {
-        densityScore = Math.log(totalAllLayers + 1) / Math.log(overallMax + 1);
+      if (activeDensityTotal > 0) {
+        // Compute active-layer max on the fly from dataLookup
+        let activeMax = 1;
+        Object.values(dataLookup).forEach(layers => {
+          let t = 0;
+          activeDensityLayers.forEach(l => { if (layers[l]) t += layers[l]; });
+          if (t > activeMax) activeMax = t;
+        });
+        densityScore = Math.log(activeDensityTotal + 1) / Math.log(activeMax + 1);
       }
 
       // Coverage score: inverse distance to nearest point markers
       let coverageScore = 0;
       let nearestDist = Infinity;
-      if (activePointPositions.length > 0 && totalAllLayers > 0) {
+      if (activePointPositions.length > 0 && activeDensityTotal > 0) {
         const centroid = getCentroid(feature.geometry);
         if (centroid) {
           for (const pos of activePointPositions) {
@@ -271,7 +284,31 @@ const MapboxVisualization = ({
     });
 
     return { type: 'FeatureCollection', features: enrichedFeatures };
-  }, [countiesGeoJSON, densityData, activePointPositions]);
+  }, [countiesGeoJSON, densityData, activePointPositions, activeDensityLayers]);
+
+  // Extract top win zone counties and emit via callback
+  useEffect(() => {
+    if (!onWinZoneRankings || !enrichedCountiesGeoJSON) return;
+    if (!winZonesEnabled || !hasDensityActive) {
+      onWinZoneRankings([]);
+      return;
+    }
+
+    const ranked = enrichedCountiesGeoJSON.features
+      .filter(f => f.properties.win_score > 0.05 && f.properties.density_total > 0)
+      .map(f => ({
+        county: f.properties.NAME,
+        state: f.properties.state_name,
+        winScore: Math.round(f.properties.win_score * 100),
+        nearestMiles: f.properties.nearest_point_miles >= 0 ? f.properties.nearest_point_miles : null,
+        densityTotal: f.properties.density_total
+      }))
+      .sort((a, b) => b.winScore - a.winScore)
+      .slice(0, 20);
+
+    onWinZoneRankings(ranked);
+  }, [enrichedCountiesGeoJSON, winZonesEnabled, hasDensityActive, onWinZoneRankings]);
+
 
   // Click handler
   const onMapClick = useCallback((event) => {
@@ -428,7 +465,7 @@ const MapboxVisualization = ({
             )}
 
             {/* Win Zones heatmap overlay */}
-            {winZonesEnabled && enrichedCountiesGeoJSON && (
+            {winZonesEnabled && hasDensityActive && enrichedCountiesGeoJSON && (
               <Source id="win-zones" type="geojson" data={enrichedCountiesGeoJSON}>
                 <Layer
                   id="win-zone-fill"
@@ -586,7 +623,7 @@ const MapboxVisualization = ({
           </button>
 
           {/* Win Zones legend */}
-          {winZonesEnabled && (
+          {winZonesEnabled && hasDensityActive && (
             <div className="absolute bottom-8 left-4 bg-white/95 backdrop-blur-sm border border-stone-200 rounded-lg px-3 py-2 shadow-md z-10" data-testid="win-zones-legend">
               <div className="text-[10px] font-semibold text-stone-600 uppercase tracking-wider mb-1.5">Win Zone Score</div>
               <div className="flex items-center gap-1">

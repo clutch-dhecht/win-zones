@@ -56,6 +56,8 @@ Interactive map visualization app for sales territory mapping. Upload CSV datase
   - Coverage = inverse-distance to nearest radius-enabled points (0mi=1.0, 200mi=0)
   - Hot red/orange = high density, far from existing infrastructure
   - Legend, hover tooltip (Win %, nearest distance), click popup with details
+  - Win Zones only active when density layers are toggled on
+  - Analytics panel switches to "Top Win Zones" ranked by win score (county, state, %, distance)
 - [x] US state + Canadian province bold border lines
 - [x] Hover tooltips on markers and counties
 - [x] Click popups with layer breakdown
