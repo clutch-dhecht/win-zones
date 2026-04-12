@@ -274,12 +274,12 @@ const MapboxVisualization = ({
 
       // Win score: high density + low coverage = hot (opportunity mode)
       const winScore = densityScore * (1 - coverageScore);
-      // Coverage gap: purely distance-based (coverage mode)
-      // Only for counties that have active density data
-      const coverageGap = activeDensityTotal > 0 ? (1 - coverageScore) : 0;
+      // Coverage strength: how well covered this county is (coverage mode)
+      // coverageScore is already 1.0 = right on top of point, 0 = 200mi+ away
+      const coverageStrength = activeDensityTotal > 0 ? coverageScore : 0;
 
       extraProps.win_score = winScore;
-      extraProps.coverage_gap = coverageGap;
+      extraProps.coverage_strength = coverageStrength;
       extraProps.nearest_point_miles = nearestDist === Infinity ? -1 : Math.round(nearestDist);
 
       return {
@@ -300,7 +300,7 @@ const MapboxVisualization = ({
     }
 
     const isCoverage = winZonesEnabled === 'coverage';
-    const scoreKey = isCoverage ? 'coverage_gap' : 'win_score';
+    const scoreKey = isCoverage ? 'coverage_strength' : 'win_score';
 
     const ranked = enrichedCountiesGeoJSON.features
       .filter(f => f.properties[scoreKey] > 0.05 && f.properties.density_total > 0)
@@ -488,7 +488,7 @@ const MapboxVisualization = ({
                   paint={{
                     'fill-color': winZonesEnabled === 'coverage'
                       ? [
-                          'interpolate', ['linear'], ['coalesce', ['get', 'coverage_gap'], 0],
+                          'interpolate', ['linear'], ['coalesce', ['get', 'coverage_strength'], 0],
                           0, 'rgba(0,0,0,0)',
                           0.05, 'rgba(0,0,0,0)',
                           0.15, '#DBEAFE',
@@ -509,7 +509,7 @@ const MapboxVisualization = ({
                         ],
                     'fill-opacity': [
                       'case',
-                      ['>', ['coalesce', ['get', winZonesEnabled === 'coverage' ? 'coverage_gap' : 'win_score'], 0], 0.05],
+                      ['>', ['coalesce', ['get', winZonesEnabled === 'coverage' ? 'coverage_strength' : 'win_score'], 0], 0.05],
                       0.6,
                       0
                     ]
@@ -656,7 +656,7 @@ const MapboxVisualization = ({
           {winZonesEnabled && hasDensityActive && (
             <div className="absolute bottom-8 left-4 bg-white/95 backdrop-blur-sm border border-stone-200 rounded-lg px-3 py-2 shadow-md z-10" data-testid="win-zones-legend">
               <div className="text-[10px] font-semibold text-stone-600 uppercase tracking-wider mb-1.5">
-                {winZonesEnabled === 'coverage' ? 'Coverage Gap' : 'Opportunity Score'}
+                {winZonesEnabled === 'coverage' ? 'Your Coverage' : 'Opportunity Score'}
               </div>
               <div className="flex items-center gap-1">
                 <span className="text-[9px] text-stone-400">Low</span>
@@ -683,7 +683,7 @@ const MapboxVisualization = ({
               </div>
               <div className="text-[9px] text-stone-400 mt-1">
                 {winZonesEnabled === 'coverage'
-                  ? 'Counties with density data far from your points'
+                  ? 'Counties near your existing points'
                   : 'High density + far from existing points'}
               </div>
             </div>

@@ -5,9 +5,9 @@ const Analytics = ({ topZones, totalCount, winZonesMode, winZoneRankings }) => {
   // When Win Zones is active and we have rankings, show win zone table
   if (winZonesMode && winZoneRankings && winZoneRankings.length > 0) {
     const isCoverage = winZonesMode === 'coverage';
-    const title = isCoverage ? 'Coverage Gaps' : 'Top Opportunities';
+    const title = isCoverage ? 'Your Coverage' : 'Top Opportunities';
     const subtitle = isCoverage
-      ? 'Counties with density data furthest from your points'
+      ? 'Counties closest to your existing points'
       : 'Highest density + lowest existing coverage';
     const Icon = isCoverage ? MapPin : Target;
     const accentColor = isCoverage ? 'blue' : 'orange';

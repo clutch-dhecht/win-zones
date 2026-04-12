@@ -237,9 +237,9 @@ const LayerControls = ({ allLayers, activeLayers, onToggle, radiusSettings, onRa
           )}
 
           <p className="text-[10px] text-stone-400 ml-5 mt-1 leading-tight">
-            {!winZonesEnabled && 'Overlay showing opportunity gaps'}
-            {winZonesEnabled === 'coverage' && 'Where are we NOT? Distance to nearest point'}
-            {winZonesEnabled === 'opportunity' && 'Highest density + furthest from coverage'}
+            {!winZonesEnabled && 'Overlay showing coverage & opportunity'}
+            {winZonesEnabled === 'coverage' && 'Where you ARE — your existing footprint'}
+            {winZonesEnabled === 'opportunity' && 'Where you\'re NOT — highest density gaps'}
           </p>
         </div>
       )}
