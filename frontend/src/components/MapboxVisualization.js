@@ -274,9 +274,8 @@ const MapboxVisualization = ({
 
       // Win score: high density + low coverage = hot (opportunity mode)
       const winScore = densityScore * (1 - coverageScore);
-      // Coverage strength: how well covered this county is (coverage mode)
-      // coverageScore is already 1.0 = right on top of point, 0 = 200mi+ away
-      const coverageStrength = activeDensityTotal > 0 ? coverageScore : 0;
+      // Coverage strength: where you ARE weighted by density (coverage mode)
+      const coverageStrength = activeDensityTotal > 0 ? (densityScore * coverageScore) : 0;
 
       extraProps.win_score = winScore;
       extraProps.coverage_strength = coverageStrength;
