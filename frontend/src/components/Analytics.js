@@ -1,29 +1,52 @@
 import React from 'react';
-import { BarChart3, Target } from 'lucide-react';
+import { BarChart3, Target, MapPin } from 'lucide-react';
 
-const Analytics = ({ topZones, totalCount, winZonesEnabled, winZoneRankings }) => {
-  // When Win Zones is ON and we have rankings, show Win Zone table
-  if (winZonesEnabled && winZoneRankings && winZoneRankings.length > 0) {
+const Analytics = ({ topZones, totalCount, winZonesMode, winZoneRankings }) => {
+  // When Win Zones is active and we have rankings, show win zone table
+  if (winZonesMode && winZoneRankings && winZoneRankings.length > 0) {
+    const isCoverage = winZonesMode === 'coverage';
+    const title = isCoverage ? 'Coverage Gaps' : 'Top Opportunities';
+    const subtitle = isCoverage
+      ? 'Counties with density data furthest from your points'
+      : 'Highest density + lowest existing coverage';
+    const Icon = isCoverage ? MapPin : Target;
+    const accentColor = isCoverage ? 'blue' : 'orange';
+    const bgClass = isCoverage ? 'bg-blue-50 border-blue-200' : 'bg-orange-50 border-orange-200';
+    const titleClass = isCoverage ? 'text-blue-800' : 'text-orange-800';
+    const subtitleClass = isCoverage ? 'text-blue-500' : 'text-orange-500';
+    const iconClass = isCoverage ? 'text-blue-600' : 'text-orange-600';
+    const borderClass = isCoverage ? 'border-blue-100' : 'border-orange-100';
+
+    const getScoreColor = (score) => {
+      if (isCoverage) {
+        return score >= 70 ? 'text-blue-800' : score >= 40 ? 'text-blue-600' : 'text-blue-400';
+      }
+      return score >= 70 ? 'text-red-600' : score >= 40 ? 'text-orange-600' : 'text-amber-600';
+    };
+
+    const getRankColor = (idx) => {
+      if (isCoverage) {
+        return idx < 3 ? 'text-blue-700' : idx < 7 ? 'text-blue-500' : 'text-blue-400';
+      }
+      return idx < 3 ? 'text-red-600' : idx < 7 ? 'text-orange-600' : 'text-amber-600';
+    };
+
     return (
-      <div className="bg-orange-50 rounded border border-orange-200 p-3" data-testid="analytics-panel">
+      <div className={`rounded border p-3 ${bgClass}`} data-testid="analytics-panel">
         <div className="flex items-center gap-2 mb-2">
-          <Target className="w-4 h-4 text-orange-600" />
-          <h3 className="text-sm font-semibold text-orange-800">Top Win Zones</h3>
+          <Icon className={`w-4 h-4 ${iconClass}`} />
+          <h3 className={`text-sm font-semibold ${titleClass}`}>{title}</h3>
         </div>
-        <p className="text-[10px] text-orange-500 mb-2.5">
-          Counties with highest density + lowest existing coverage
-        </p>
+        <p className={`text-[10px] ${subtitleClass} mb-2.5`}>{subtitle}</p>
 
         <div className="space-y-1">
           {winZoneRankings.slice(0, 15).map((zone, idx) => (
             <div
-              key={`${zone.county}-${zone.state}`}
-              className="flex items-center gap-2 py-1 border-b border-orange-100 last:border-0"
+              key={`${zone.county}-${zone.state}-${idx}`}
+              className={`flex items-center gap-2 py-1 border-b last:border-0 ${borderClass}`}
               data-testid={`win-zone-${idx}`}
             >
-              <span className={`text-[10px] font-bold w-5 text-right ${
-                idx < 3 ? 'text-red-600' : idx < 7 ? 'text-orange-600' : 'text-amber-600'
-              }`}>
+              <span className={`text-[10px] font-bold w-5 text-right ${getRankColor(idx)}`}>
                 {idx + 1}
               </span>
               <div className="flex-1 min-w-0">
@@ -32,15 +55,13 @@ const Analytics = ({ topZones, totalCount, winZonesEnabled, winZoneRankings }) =
                 </div>
                 {zone.nearestMiles != null && (
                   <div className="text-[10px] text-stone-400">
-                    {zone.nearestMiles}mi to nearest point
+                    {zone.nearestMiles}mi to nearest
                   </div>
                 )}
               </div>
               <div className="flex-shrink-0 text-right">
-                <div className={`text-xs font-bold ${
-                  zone.winScore >= 70 ? 'text-red-600' : zone.winScore >= 40 ? 'text-orange-600' : 'text-amber-600'
-                }`}>
-                  {zone.winScore}%
+                <div className={`text-xs font-bold ${getScoreColor(zone.score)}`}>
+                  {zone.score}%
                 </div>
               </div>
             </div>

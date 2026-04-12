@@ -191,7 +191,7 @@ const LayerControls = ({ allLayers, activeLayers, onToggle, radiusSettings, onRa
         />
       )}
 
-      {/* Win Zones Analysis Toggle */}
+      {/* Win Zones Analysis */}
       {canShowWinZones && (
         <div className="mt-3 pt-3 border-t border-stone-200">
           <div className="flex items-center gap-2 py-1">
@@ -201,17 +201,45 @@ const LayerControls = ({ allLayers, activeLayers, onToggle, radiusSettings, onRa
             </span>
             <div onClick={(e) => e.stopPropagation()}>
               <Switch
-                checked={winZonesEnabled}
-                onCheckedChange={onWinZonesToggle}
+                checked={!!winZonesEnabled}
+                onCheckedChange={(checked) => onWinZonesToggle(checked ? 'opportunity' : null)}
                 className="scale-75"
                 data-testid="win-zones-toggle"
               />
             </div>
           </div>
-          <p className="text-[10px] text-stone-400 ml-5 leading-tight">
-            {winZonesEnabled
-              ? 'Showing high-density counties with low point coverage'
-              : 'Overlay showing opportunity gaps'}
+
+          {winZonesEnabled && (
+            <div className="ml-5 mt-1 flex gap-1">
+              <button
+                onClick={() => onWinZonesToggle('coverage')}
+                className={`text-[10px] px-2 py-1 rounded transition-colors ${
+                  winZonesEnabled === 'coverage'
+                    ? 'bg-blue-700 text-white'
+                    : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
+                }`}
+                data-testid="win-mode-coverage"
+              >
+                Coverage
+              </button>
+              <button
+                onClick={() => onWinZonesToggle('opportunity')}
+                className={`text-[10px] px-2 py-1 rounded transition-colors ${
+                  winZonesEnabled === 'opportunity'
+                    ? 'bg-orange-600 text-white'
+                    : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
+                }`}
+                data-testid="win-mode-opportunity"
+              >
+                Opportunity
+              </button>
+            </div>
+          )}
+
+          <p className="text-[10px] text-stone-400 ml-5 mt-1 leading-tight">
+            {!winZonesEnabled && 'Overlay showing opportunity gaps'}
+            {winZonesEnabled === 'coverage' && 'Where are we NOT? Distance to nearest point'}
+            {winZonesEnabled === 'opportunity' && 'Highest density + furthest from coverage'}
           </p>
         </div>
       )}

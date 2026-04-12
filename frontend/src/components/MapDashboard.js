@@ -14,7 +14,7 @@ const MapDashboard = ({ apiUrl }) => {
   const [activeLayers, setActiveLayers] = useState({});
   const [radiusSettings, setRadiusSettings] = useState({});
   const [layerColors, setLayerColors] = useState({});
-  const [winZonesEnabled, setWinZonesEnabled] = useState(false);
+  const [winZonesMode, setWinZonesMode] = useState(null); // null | 'coverage' | 'opportunity'
   const [winZoneRankings, setWinZoneRankings] = useState([]);
   const [topZones, setTopZones] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -207,8 +207,8 @@ const MapDashboard = ({ apiUrl }) => {
                 onRadiusChange={handleRadiusChange}
                 layerColors={layerColors}
                 onColorChange={handleColorChange}
-                winZonesEnabled={winZonesEnabled}
-                onWinZonesToggle={setWinZonesEnabled}
+                winZonesEnabled={winZonesMode}
+                onWinZonesToggle={setWinZonesMode}
                 hasPointData={pointData.length > 0}
                 hasDensityData={densityData.length > 0}
               />
@@ -224,7 +224,7 @@ const MapDashboard = ({ apiUrl }) => {
               <Analytics
                 topZones={topZones}
                 totalCount={totalCount}
-                winZonesEnabled={winZonesEnabled}
+                winZonesMode={winZonesMode}
                 winZoneRankings={winZoneRankings}
               />
             </div>
@@ -240,7 +240,7 @@ const MapDashboard = ({ apiUrl }) => {
           activeLayers={activeLayers}
           radiusSettings={radiusSettings}
           layerColors={layerColors}
-          winZonesEnabled={winZonesEnabled}
+          winZonesEnabled={winZonesMode}
           onWinZoneRankings={setWinZoneRankings}
           hasData={hasData}
         />
