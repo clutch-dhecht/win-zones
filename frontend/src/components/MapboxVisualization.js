@@ -80,6 +80,7 @@ const MapboxVisualization = ({
   radiusSettings,
   layerColors = {},
   winZonesEnabled = false,
+  winZones = [],
   onWinZoneRankings,
   onEnrichedFeatures,
   onMapZoom,
@@ -377,6 +378,38 @@ const MapboxVisualization = ({
     }
   }, [selectedState, enrichedCountiesGeoJSON]);
 
+  // Build zone outline GeoJSON from winZones county IDs
+  const zoneOutlinesGeoJSON = useMemo(() => {
+    if (!winZones || winZones.length === 0 || !enrichedCountiesGeoJSON) return null;
+
+    const features = [];
+    const ZONE_COLORS = ['#DC2626', '#F97316', '#FBBF24']; // Zone 1=red, 2=orange, 3=yellow
+
+    winZones.forEach((zone, zoneIdx) => {
+      if (!zone.countyIds) return;
+      const idSet = new Set(zone.countyIds);
+
+      // Find matching features from enriched GeoJSON
+      enrichedCountiesGeoJSON.features.forEach(f => {
+        const key = `${f.properties.state_name}|${f.properties.NAME}`;
+        if (idSet.has(key)) {
+          features.push({
+            ...f,
+            properties: {
+              ...f.properties,
+              zone_index: zoneIdx,
+              zone_name: zone.name,
+              zone_color: ZONE_COLORS[zoneIdx] || '#FBBF24',
+            }
+          });
+        }
+      });
+    });
+
+    return features.length > 0 ? { type: 'FeatureCollection', features } : null;
+  }, [winZones, enrichedCountiesGeoJSON]);
+
+
   // Click handler
   const onMapClick = useCallback((event) => {
     const features = event.features;
@@ -537,6 +570,29 @@ const MapboxVisualization = ({
                     : ['interpolate', ['linear'], ['coalesce', ['get', 'win_score'], 0], 0, 'rgba(0,0,0,0)', 0.05, 'rgba(0,0,0,0)', 0.15, '#FEF3C7', 0.3, '#FBBF24', 0.5, '#F97316', 0.7, '#DC2626', 0.9, '#991B1B'],
                   'fill-opacity': ['case', ['>', ['coalesce', ['get', winZonesEnabled === 'coverage' ? 'coverage_strength' : 'win_score'], 0], 0.05], 0.6, 0]
                 }} />
+              </Source>
+            )}
+
+            {/* Win Zone outlines — bold borders around each zone's counties */}
+            {zoneOutlinesGeoJSON && (
+              <Source id="zone-outlines" type="geojson" data={zoneOutlinesGeoJSON}>
+                <Layer
+                  id="zone-outline-fill"
+                  type="fill"
+                  paint={{
+                    'fill-color': ['get', 'zone_color'],
+                    'fill-opacity': 0.08
+                  }}
+                />
+                <Layer
+                  id="zone-outline-border"
+                  type="line"
+                  paint={{
+                    'line-color': ['get', 'zone_color'],
+                    'line-width': ['interpolate', ['linear'], ['zoom'], 3, 2, 6, 3, 10, 4],
+                    'line-opacity': 0.9
+                  }}
+                />
               </Source>
             )}
 

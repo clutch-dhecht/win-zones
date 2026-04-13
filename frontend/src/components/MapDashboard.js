@@ -23,6 +23,7 @@ const MapDashboard = ({ apiUrl }) => {
   const [winZonesMode, setWinZonesMode] = useState(null);
   const [winZoneRankings, setWinZoneRankings] = useState([]);
   const [enrichedFeatures, setEnrichedFeatures] = useState([]);
+  const [winZones, setWinZones] = useState([]);
   const [selectedState, setSelectedState] = useState(null);
   const [topZones, setTopZones] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -235,6 +236,7 @@ const MapDashboard = ({ apiUrl }) => {
             locationData={locationData}
             pointData={pointData}
             onZoomToZone={handleZoomToZone}
+            onZonesComputed={setWinZones}
           />
         </div>
       )}
@@ -306,6 +308,7 @@ const MapDashboard = ({ apiUrl }) => {
             radiusSettings={radiusSettings}
             layerColors={layerColors}
             winZonesEnabled={winZonesMode}
+            winZones={winZones}
             onWinZoneRankings={setWinZoneRankings}
             onEnrichedFeatures={setEnrichedFeatures}
             onMapZoom={(fn) => { mapZoomRef.current = fn; }}

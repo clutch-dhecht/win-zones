@@ -42,7 +42,7 @@ const clusterCounties = (counties) => {
   const sorted = [...counties].sort((a, b) => b.score - a.score);
   const used = new Set();
   const clusters = [];
-  const MERGE_DIST = 60; // miles — merge counties within this distance for contiguous zones
+  const MERGE_DIST = 80; // miles — merge counties within this distance for contiguous zones
 
   for (const county of sorted) {
     if (used.has(county.id)) continue;
@@ -142,6 +142,7 @@ const WinZoneCards = ({
   locationData,
   pointData,
   onZoomToZone,
+  onZonesComputed,
 }) => {
   const [expandedZone, setExpandedZone] = React.useState(null);
 
@@ -246,6 +247,7 @@ const WinZoneCards = ({
         if (cat !== 'cls') categorized[cat][layer] = count;
       });
 
+      const countyIds = cluster.map(c => c.id); // "State|COUNTY" IDs for map outlines
       const counties = cluster.map(c => `${c.county}, ${c.state}`);
 
       return {
@@ -257,9 +259,15 @@ const WinZoneCards = ({
         nearestCLS,
         lat, lon, bbox,
         counties,
+        countyIds,
       };
     });
   }, [enrichedFeatures, activeLayers, winZonesMode, selectedState, locationData, pointData]);
+
+  // Emit zones for map outlines
+  React.useEffect(() => {
+    if (onZonesComputed) onZonesComputed(zones);
+  }, [zones, onZonesComputed]);
 
   if (zones.length === 0) return null;
 
