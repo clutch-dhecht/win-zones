@@ -19,7 +19,7 @@ export const LAYER_CONFIG = {
     fillOpacity: 0.6,
     order: 2
   },
-  "Growers with On Farm Storage": {
+  "Farms with Grain Storage": {
     type: "density",
     radius: { enabled: false },
     color: "#84CC16",

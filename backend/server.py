@@ -180,7 +180,9 @@ async def upload_density_data(file: UploadFile = File(...)):
         if 'State' not in df.columns or 'County' not in df.columns:
             raise HTTPException(status_code=400, detail="CSV must have 'State' and 'County' columns")
 
-        layer_columns = [col for col in df.columns if col not in ['State', 'County']]
+        # Columns that are not State/County and not known non-data columns
+        skip_cols = {'State', 'County', 'Program', 'Year', 'Source', 'Period'}
+        layer_columns = [col for col in df.columns if col not in skip_cols]
 
         # Auto-rename known columns
         col_renames = {col: COLUMN_RENAME_MAP.get(col, col) for col in layer_columns}
