@@ -81,6 +81,9 @@ const MapboxVisualization = ({
   layerColors = {},
   winZonesEnabled = false,
   onWinZoneRankings,
+  onEnrichedFeatures,
+  onMapZoom,
+  selectedState,
   hasData
 }) => {
   const [viewState, setViewState] = useState({ longitude: -97, latitude: 39, zoom: 4, pitch: 0, bearing: 0 });
@@ -323,6 +326,56 @@ const MapboxVisualization = ({
 
     onWinZoneRankings(ranked);
   }, [enrichedCountiesGeoJSON, winZonesEnabled, hasDensityActive, onWinZoneRankings]);
+
+  // Emit enriched features for WinZoneCards
+  useEffect(() => {
+    if (onEnrichedFeatures && enrichedCountiesGeoJSON) {
+      onEnrichedFeatures(enrichedCountiesGeoJSON.features);
+    }
+  }, [enrichedCountiesGeoJSON, onEnrichedFeatures]);
+
+  // Zoom function
+  const zoomToBbox = useCallback((bbox) => {
+    const map = mapRef.current?.getMap();
+    if (map && bbox) {
+      map.fitBounds(
+        [[bbox.minLon, bbox.minLat], [bbox.maxLon, bbox.maxLat]],
+        { padding: 60, duration: 1500 }
+      );
+    }
+  }, []);
+
+  // Expose zoom function to parent
+  useEffect(() => {
+    if (onMapZoom) onMapZoom(zoomToBbox);
+  }, [onMapZoom, zoomToBbox]);
+
+  // Also handle state filter zoom
+  useEffect(() => {
+    if (!selectedState || !enrichedCountiesGeoJSON) return;
+    const stateFeatures = enrichedCountiesGeoJSON.features.filter(
+      f => f.properties.state_name === selectedState
+    );
+    if (stateFeatures.length === 0) return;
+
+    let minLon = 180, maxLon = -180, minLat = 90, maxLat = -90;
+    stateFeatures.forEach(f => {
+      const coords = f.geometry.type === 'MultiPolygon'
+        ? f.geometry.coordinates.flat(2)
+        : f.geometry.coordinates[0] || [];
+      coords.forEach(([lon, lat]) => {
+        if (lon < minLon) minLon = lon;
+        if (lon > maxLon) maxLon = lon;
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+      });
+    });
+
+    const map = mapRef.current?.getMap();
+    if (map && minLon < maxLon) {
+      map.fitBounds([[minLon, minLat], [maxLon, maxLat]], { padding: 40, duration: 1200 });
+    }
+  }, [selectedState, enrichedCountiesGeoJSON]);
 
   // Click handler
   const onMapClick = useCallback((event) => {
