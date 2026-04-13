@@ -219,7 +219,7 @@ const MapDashboard = ({ apiUrl }) => {
                 <div onClick={(e) => e.stopPropagation()}>
                   <Switch
                     checked={!!winZonesMode}
-                    onCheckedChange={(checked) => setWinZonesMode(checked ? 'opportunity' : null)}
+                    onCheckedChange={(checked) => setWinZonesMode(checked ? 'coverage' : null)}
                     className="scale-75"
                     data-testid="win-zones-toggle"
                   />
