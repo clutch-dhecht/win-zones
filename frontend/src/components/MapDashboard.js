@@ -295,11 +295,11 @@ const MapDashboard = ({ apiUrl }) => {
             </div>
           )}
 
-          {/* D. Analytics */}
-          {hasData && (
+          {/* D. Analytics — only when Win Zones is active */}
+          {hasData && winZonesMode && winZoneRankings.length > 0 && (
             <div className="px-4 py-3">
               <label className="text-[10px] tracking-[0.08em] uppercase font-semibold text-stone-400 block mb-2">
-                {winZonesMode ? (winZonesMode === 'coverage' ? 'Coverage Analysis' : 'Opportunity Analysis') : 'Top Opportunity Zones'}
+                {winZonesMode === 'coverage' ? 'Coverage Analysis' : 'Opportunity Analysis'}
               </label>
               <Analytics topZones={topZones} totalCount={totalCount} winZonesMode={winZonesMode} winZoneRankings={winZoneRankings} />
             </div>
