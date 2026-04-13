@@ -35,6 +35,7 @@ geocode_cache = {}
 COLUMN_RENAME_MAP = {
     'RICE - ACRES HARVESTED': 'Rice Acres',
     'CORN, GRAIN - ACRES HARVESTED': 'Corn Acres',
+    'INVENTORY OF HOGS: (1,000 OR MORE HEAD)': '1000+ Hogs',
 }
 
 # Layer rename map: old name -> new name (for migrating existing data)

@@ -47,6 +47,27 @@ export const LAYER_CONFIG = {
     fillOpacity: 0.6,
     order: 10
   },
+  "1000+ Corn Growers": {
+    type: "density",
+    radius: { enabled: false },
+    color: "#EA580C",
+    fillOpacity: 0.6,
+    order: 11
+  },
+  "1000+ Rice Growers": {
+    type: "density",
+    radius: { enabled: false },
+    color: "#0E7490",
+    fillOpacity: 0.6,
+    order: 12
+  },
+  "1000+ Hogs": {
+    type: "density",
+    radius: { enabled: false },
+    color: "#9F1239",
+    fillOpacity: 0.6,
+    order: 13
+  },
   "Farms with Grain Storage": {
     type: "density",
     radius: { enabled: false },
