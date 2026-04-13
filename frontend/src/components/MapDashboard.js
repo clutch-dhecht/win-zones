@@ -165,161 +165,198 @@ const MapDashboard = ({ apiUrl }) => {
     if (pointData.length > 0 || locationData.length > 0 || densityData.length > 0) fetchTopZones();
   }, [fetchTopZones, pointData, locationData, densityData]);
 
+  const [mobileOpen, setMobileOpen] = useState(false);
+
   const hasData = pointData.length > 0 || locationData.length > 0 || densityData.length > 0;
 
-  return (
-    <div className="h-screen w-full flex flex-col md:flex-row bg-stone-100 overflow-hidden">
-      {/* Sidebar */}
-      <div className="w-full md:w-72 lg:w-80 flex-shrink-0 border-r border-stone-200 bg-white h-full flex flex-col z-10 shadow-sm">
-        <div className="px-5 pt-5 pb-4 border-b border-stone-100">
-          <h1 className="text-2xl tracking-tight font-bold text-stone-900" style={{ fontFamily: 'Manrope, sans-serif' }}>
-            CLS Win Zones
-          </h1>
-          <p className="text-xs text-stone-400 mt-1" style={{ fontFamily: 'IBM Plex Sans, sans-serif' }}>
-            Market opportunity analysis
+  // Shared sidebar content
+  const sidebarContent = (
+    <>
+      {/* A. Market Views */}
+      {hasData && (
+        <div className="px-4 py-3 border-b border-stone-100">
+          <label className="text-[10px] tracking-[0.08em] uppercase font-semibold text-stone-400 block mb-2">
+            Market Views
+          </label>
+          <MarketViews
+            activeLayers={activeLayers}
+            allLayers={allLayers}
+            onMarketSelect={(key) => { handleMarketSelect(key); setMobileOpen(false); }}
+            activeMarket={activeMarket}
+          />
+        </div>
+      )}
+
+      {/* Layer Stats Summary */}
+      {hasData && Object.values(activeLayers).some(v => v) && (
+        <div className="px-4 py-3 border-b border-stone-100">
+          <LayerStats
+            activeLayers={activeLayers}
+            pointData={pointData}
+            locationData={locationData}
+            densityData={densityData}
+          />
+        </div>
+      )}
+
+      {/* C. Win Zones (standalone) */}
+      {hasData && (pointData.length > 0 || locationData.length > 0) && densityData.length > 0 && (
+        <div className="px-4 py-3 border-b border-stone-100">
+          <div className="flex items-center gap-2">
+            <div className="w-3.5 h-3.5 rounded-full flex-shrink-0 bg-gradient-to-r from-orange-500 to-red-600" />
+            <span className={`text-sm flex-1 font-medium ${winZonesMode ? 'text-red-700' : 'text-stone-400'}`}>
+              Win Zones
+            </span>
+            <div onClick={(e) => e.stopPropagation()}>
+              <Switch
+                checked={!!winZonesMode}
+                onCheckedChange={(checked) => setWinZonesMode(checked ? 'coverage' : null)}
+                className="scale-75"
+                data-testid="win-zones-toggle"
+              />
+            </div>
+          </div>
+          {winZonesMode && (
+            <div className="ml-5 mt-1.5 flex gap-1">
+              <button
+                onClick={() => setWinZonesMode('coverage')}
+                className={`text-[10px] px-2 py-1 rounded transition-colors ${
+                  winZonesMode === 'coverage' ? 'bg-green-700 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
+                }`}
+                data-testid="win-mode-coverage"
+              >Coverage</button>
+              <button
+                onClick={() => setWinZonesMode('opportunity')}
+                className={`text-[10px] px-2 py-1 rounded transition-colors ${
+                  winZonesMode === 'opportunity' ? 'bg-orange-600 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
+                }`}
+                data-testid="win-mode-opportunity"
+              >Opportunity</button>
+            </div>
+          )}
+          <p className="text-[10px] text-stone-400 ml-5 mt-1 leading-tight">
+            {!winZonesMode && 'Strategic overlay for coverage & opportunity'}
+            {winZonesMode === 'coverage' && 'Where you ARE — your existing footprint'}
+            {winZonesMode === 'opportunity' && 'Where you\'re NOT — highest density gaps'}
           </p>
         </div>
+      )}
 
-        <div className="flex-1 overflow-y-auto">
-          {/* A. Market Views */}
-          {hasData && (
-            <div className="px-4 py-3 border-b border-stone-100">
-              <label className="text-[10px] tracking-[0.08em] uppercase font-semibold text-stone-400 block mb-2">
-                Market Views
-              </label>
-              <MarketViews
-                activeLayers={activeLayers}
-                allLayers={allLayers}
-                onMarketSelect={handleMarketSelect}
-                activeMarket={activeMarket}
-              />
-            </div>
-          )}
+      {/* B. Data Layers + Upload (collapsed) */}
+      {hasData && (
+        <div className="border-b border-stone-100">
+          <button
+            onClick={() => setAdvancedOpen(!advancedOpen)}
+            className="flex items-center gap-1.5 w-full px-4 py-2.5 text-left hover:bg-stone-50 transition-colors"
+            data-testid="advanced-toggle"
+          >
+            {advancedOpen ? <ChevronDown className="w-3 h-3 text-stone-400" /> : <ChevronRight className="w-3 h-3 text-stone-400" />}
+            <span className="text-[10px] tracking-[0.08em] uppercase font-semibold text-stone-400">
+              Data Layers (Advanced)
+            </span>
+            {activeMarket === 'custom' && (
+              <span className="ml-auto text-[9px] bg-stone-200 text-stone-500 px-1.5 py-0.5 rounded">Custom</span>
+            )}
+          </button>
 
-          {/* Layer Stats Summary */}
-          {hasData && Object.values(activeLayers).some(v => v) && (
-            <div className="px-4 py-3 border-b border-stone-100">
-              <LayerStats
-                activeLayers={activeLayers}
-                pointData={pointData}
-                locationData={locationData}
-                densityData={densityData}
-              />
-            </div>
-          )}
-
-          {/* C. Win Zones (standalone) */}
-          {hasData && (pointData.length > 0 || locationData.length > 0) && densityData.length > 0 && (
-            <div className="px-4 py-3 border-b border-stone-100">
-              <div className="flex items-center gap-2">
-                <div className="w-3.5 h-3.5 rounded-full flex-shrink-0 bg-gradient-to-r from-orange-500 to-red-600" />
-                <span className={`text-sm flex-1 font-medium ${winZonesMode ? 'text-red-700' : 'text-stone-400'}`}>
-                  Win Zones
-                </span>
-                <div onClick={(e) => e.stopPropagation()}>
-                  <Switch
-                    checked={!!winZonesMode}
-                    onCheckedChange={(checked) => setWinZonesMode(checked ? 'coverage' : null)}
-                    className="scale-75"
-                    data-testid="win-zones-toggle"
-                  />
-                </div>
+          {advancedOpen && (
+            <div className="px-4 pb-3">
+              <div className="mb-3">
+                <FileUpload onPointUpload={handlePointUpload} onDensityUpload={handleDensityUpload} loading={loading} />
               </div>
-              {winZonesMode && (
-                <div className="ml-5 mt-1.5 flex gap-1">
-                  <button
-                    onClick={() => setWinZonesMode('coverage')}
-                    className={`text-[10px] px-2 py-1 rounded transition-colors ${
-                      winZonesMode === 'coverage' ? 'bg-green-700 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
-                    }`}
-                    data-testid="win-mode-coverage"
-                  >Coverage</button>
-                  <button
-                    onClick={() => setWinZonesMode('opportunity')}
-                    className={`text-[10px] px-2 py-1 rounded transition-colors ${
-                      winZonesMode === 'opportunity' ? 'bg-orange-600 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
-                    }`}
-                    data-testid="win-mode-opportunity"
-                  >Opportunity</button>
-                </div>
-              )}
-              <p className="text-[10px] text-stone-400 ml-5 mt-1 leading-tight">
-                {!winZonesMode && 'Strategic overlay for coverage & opportunity'}
-                {winZonesMode === 'coverage' && 'Where you ARE — your existing footprint'}
-                {winZonesMode === 'opportunity' && 'Where you\'re NOT — highest density gaps'}
-              </p>
-            </div>
-          )}
-
-          {/* B. Data Layers + Upload (collapsed) */}
-          {hasData && (
-            <div className="border-b border-stone-100">
-              <button
-                onClick={() => setAdvancedOpen(!advancedOpen)}
-                className="flex items-center gap-1.5 w-full px-4 py-2.5 text-left hover:bg-stone-50 transition-colors"
-                data-testid="advanced-toggle"
-              >
-                {advancedOpen ? <ChevronDown className="w-3 h-3 text-stone-400" /> : <ChevronRight className="w-3 h-3 text-stone-400" />}
-                <span className="text-[10px] tracking-[0.08em] uppercase font-semibold text-stone-400">
-                  Data Layers (Advanced)
-                </span>
-                {activeMarket === 'custom' && (
-                  <span className="ml-auto text-[9px] bg-stone-200 text-stone-500 px-1.5 py-0.5 rounded">Custom</span>
-                )}
-              </button>
-
-              {advancedOpen && (
-                <div className="px-4 pb-3">
-                  <div className="mb-3">
-                    <FileUpload onPointUpload={handlePointUpload} onDensityUpload={handleDensityUpload} loading={loading} />
-                  </div>
-                  <LayerControls
-                    allLayers={allLayers}
-                    activeLayers={activeLayers}
-                    onToggle={toggleLayer}
-                    radiusSettings={radiusSettings}
-                    onRadiusChange={handleRadiusChange}
-                    layerColors={layerColors}
-                    onColorChange={handleColorChange}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Upload when no data */}
-          {!hasData && (
-            <div className="px-4 py-3 border-b border-stone-100">
-              <label className="text-[10px] tracking-[0.08em] uppercase font-semibold text-stone-400 block mb-2">Data Upload</label>
-              <FileUpload onPointUpload={handlePointUpload} onDensityUpload={handleDensityUpload} loading={loading} />
-            </div>
-          )}
-
-          {/* D. Analytics — only when Win Zones is active */}
-          {hasData && winZonesMode && winZoneRankings.length > 0 && (
-            <div className="px-4 py-3">
-              <label className="text-[10px] tracking-[0.08em] uppercase font-semibold text-stone-400 block mb-2">
-                {winZonesMode === 'coverage' ? 'Coverage Analysis' : 'Opportunity Analysis'}
-              </label>
-              <Analytics topZones={topZones} totalCount={totalCount} winZonesMode={winZonesMode} winZoneRankings={winZoneRankings} />
+              <LayerControls
+                allLayers={allLayers}
+                activeLayers={activeLayers}
+                onToggle={toggleLayer}
+                radiusSettings={radiusSettings}
+                onRadiusChange={handleRadiusChange}
+                layerColors={layerColors}
+                onColorChange={handleColorChange}
+              />
             </div>
           )}
         </div>
+      )}
+
+      {/* Upload when no data */}
+      {!hasData && (
+        <div className="px-4 py-3 border-b border-stone-100">
+          <label className="text-[10px] tracking-[0.08em] uppercase font-semibold text-stone-400 block mb-2">Data Upload</label>
+          <FileUpload onPointUpload={handlePointUpload} onDensityUpload={handleDensityUpload} loading={loading} />
+        </div>
+      )}
+
+      {/* D. Analytics — only when Win Zones is active */}
+      {hasData && winZonesMode && winZoneRankings.length > 0 && (
+        <div className="px-4 py-3">
+          <label className="text-[10px] tracking-[0.08em] uppercase font-semibold text-stone-400 block mb-2">
+            {winZonesMode === 'coverage' ? 'Coverage Analysis' : 'Opportunity Analysis'}
+          </label>
+          <Analytics topZones={topZones} totalCount={totalCount} winZonesMode={winZonesMode} winZoneRankings={winZoneRankings} />
+        </div>
+      )}
+    </>
+  );
+
+  return (
+    <div className="h-screen w-full flex flex-col bg-stone-100 overflow-hidden">
+      {/* Mobile top bar */}
+      <div className="md:hidden flex items-center justify-between px-4 py-2 bg-white border-b border-stone-200 z-20">
+        <div>
+          <h1 className="text-lg font-bold text-stone-900" style={{ fontFamily: 'Manrope, sans-serif' }}>CLS Win Zones</h1>
+        </div>
+        <button
+          onClick={() => setMobileOpen(!mobileOpen)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-800 text-white text-xs font-medium"
+          data-testid="mobile-menu-toggle"
+        >
+          {mobileOpen ? 'Close' : 'Menu'}
+          {activeMarket && activeMarket !== 'custom' && !mobileOpen && (
+            <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px] capitalize">{activeMarket}</span>
+          )}
+        </button>
       </div>
 
-      {/* Map */}
-      <div className="flex-grow relative h-full bg-stone-50 flex flex-col">
-        <MapboxVisualization
-          pointData={pointData}
-          locationData={locationData}
-          densityData={densityData}
-          activeLayers={activeLayers}
-          radiusSettings={radiusSettings}
-          layerColors={layerColors}
-          winZonesEnabled={winZonesMode}
-          onWinZoneRankings={setWinZoneRankings}
-          hasData={hasData}
-        />
+      {/* Mobile slide-over panel */}
+      {mobileOpen && (
+        <div className="md:hidden absolute inset-0 z-30 flex" style={{ top: '48px' }}>
+          <div className="w-full max-w-sm bg-white shadow-xl overflow-y-auto" style={{ maxHeight: 'calc(100vh - 48px)' }}>
+            {sidebarContent}
+          </div>
+          <div className="flex-1 bg-black/30" onClick={() => setMobileOpen(false)} />
+        </div>
+      )}
+
+      <div className="flex-1 flex flex-row overflow-hidden">
+        {/* Desktop sidebar */}
+        <div className="hidden md:flex md:w-72 lg:w-80 flex-shrink-0 border-r border-stone-200 bg-white h-full flex-col z-10 shadow-sm">
+          <div className="px-5 pt-5 pb-4 border-b border-stone-100">
+            <h1 className="text-2xl tracking-tight font-bold text-stone-900" style={{ fontFamily: 'Manrope, sans-serif' }}>
+              CLS Win Zones
+            </h1>
+            <p className="text-xs text-stone-400 mt-1" style={{ fontFamily: 'IBM Plex Sans, sans-serif' }}>
+              Market opportunity analysis
+            </p>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {sidebarContent}
+          </div>
+        </div>
+
+        {/* Map */}
+        <div className="flex-grow relative h-full bg-stone-50 flex flex-col">
+          <MapboxVisualization
+            pointData={pointData}
+            locationData={locationData}
+            densityData={densityData}
+            activeLayers={activeLayers}
+            radiusSettings={radiusSettings}
+            layerColors={layerColors}
+            winZonesEnabled={winZonesMode}
+            onWinZoneRankings={setWinZoneRankings}
+            hasData={hasData}
+          />
+        </div>
       </div>
     </div>
   );
