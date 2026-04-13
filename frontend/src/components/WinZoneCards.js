@@ -54,11 +54,11 @@ const clusterCounties = (counties) => {
     // Expand: find all nearby high-scoring counties and merge them in
     // Cap at 40 counties to keep zones as actionable regional blocks
     let changed = true;
-    while (changed && cluster.length < 40) {
+    while (changed && cluster.length < 50) {
       changed = false;
       for (const candidate of sorted) {
         if (used.has(candidate.id)) continue;
-        if (cluster.length >= 40) break;
+        if (cluster.length >= 50) break;
         // Check if candidate is close to ANY county in this cluster
         for (const member of cluster) {
           const dist = quickDist(member.lat, member.lon, candidate.lat, candidate.lon);
@@ -347,19 +347,6 @@ const WinZoneCards = ({
                         <span className="font-medium text-stone-800">{formatNum(value)}</span>
                       </div>
                     ))}
-                  </div>
-                )}
-
-                {/* CLS Distribution */}
-                {zone.nearestCLS && (
-                  <div>
-                    <div className="text-[9px] uppercase tracking-wider font-semibold text-stone-400 mb-0.5">CLS Distribution</div>
-                    <div className="flex justify-between text-xs text-stone-600 py-0.5">
-                      <span>Nearest Customer</span>
-                      <span className="font-medium text-stone-800">
-                        {zone.nearestCLS.city}, {zone.nearestCLS.state} ({zone.nearestCLS.dist}mi)
-                      </span>
-                    </div>
                   </div>
                 )}
 
