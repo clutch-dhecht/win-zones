@@ -131,73 +131,57 @@ async def upload_point_data(file: UploadFile = File(...)):
         has_city_state = 'City' in df.columns and 'State' in df.columns
 
         if has_coords:
-            # Location list format — first column is the business type name
+            # Location list format — store as individual points
             first_col = df.columns[0]
             layer_name = LOCATION_LAYER_MAP.get(first_col, first_col)
 
-            # Normalize state column (might be lowercase 'state')
             state_col = 'state' if 'state' in df.columns else 'State'
             city_col = 'city' if 'city' in df.columns else 'City'
+            street_col = 'street' if 'street' in df.columns else None
+            zip_col = 'postal_code' if 'postal_code' in df.columns else ('zip' if 'zip' in df.columns else None)
 
-            # Filter valid rows
             df = df.dropna(subset=['latitude', 'longitude', state_col, city_col])
             df = df[df[state_col].apply(lambda s: is_us_state(str(s).strip()))]
-
-            # Deduplicate by lat/lon (some CSVs have duplicate rows)
             df = df.drop_duplicates(subset=['latitude', 'longitude', first_col])
 
-            # Aggregate by city/state: count occurrences
-            grouped = df.groupby([city_col, state_col]).agg(
-                lat=('latitude', 'first'),
-                lon=('longitude', 'first'),
-                count=(first_col, 'count')
-            ).reset_index()
-
-            processed_data = []
-            for _, row in grouped.iterrows():
-                processed_data.append({
-                    'state': str(row[state_col]).strip(),
+            # Store individual points
+            points = []
+            for _, row in df.iterrows():
+                point = {
+                    'name': str(row[first_col]).strip() if pd.notna(row[first_col]) else '',
+                    'layer': layer_name,
                     'city': str(row[city_col]).strip(),
-                    'lat': float(row['lat']),
-                    'lon': float(row['lon']),
-                    'layers': {layer_name: int(row['count'])}
-                })
+                    'state': str(row[state_col]).strip(),
+                    'lat': float(row['latitude']),
+                    'lon': float(row['longitude']),
+                }
+                if street_col and pd.notna(row.get(street_col)):
+                    point['address'] = str(row[street_col]).strip()
+                if zip_col and pd.notna(row.get(zip_col)):
+                    point['zip'] = str(row[zip_col]).strip()
+                points.append(point)
 
-            # Merge with existing point data
-            existing = await db.point_data.find({}, {"_id": 0}).to_list(50000)
-            lookup = {}
-            for doc in existing:
-                key = f"{doc['state']}|{doc['city']}"
-                lookup[key] = doc
-            for item in processed_data:
-                key = f"{item['state']}|{item['city']}"
-                if key in lookup:
-                    lookup[key]['layers'][layer_name] = item['layers'][layer_name]
-                    # Update coords if not already set
-                    if not lookup[key].get('lat'):
-                        lookup[key]['lat'] = item['lat']
-                        lookup[key]['lon'] = item['lon']
-                else:
-                    lookup[key] = item
+            # Remove old points for this layer, then insert new
+            await db.location_points.delete_many({'layer': layer_name})
+            if points:
+                await db.location_points.insert_many(points)
 
-            merged = list(lookup.values())
-            await db.point_data.delete_many({})
-            if merged:
-                await db.point_data.insert_many(merged)
+            # Get all layer names across location_points
+            all_location_layers = await db.location_points.distinct('layer')
+            # Also get aggregated point layers
+            agg_data = await db.point_data.find({}, {"_id": 0, "layers": 1}).to_list(1000)
+            agg_layers = set()
+            for d in agg_data:
+                agg_layers.update(d.get('layers', {}).keys())
 
-            # Collect all layer names
-            all_layers = set()
-            for d in merged:
-                all_layers.update(d['layers'].keys())
+            all_layers = sorted(set(all_location_layers) | agg_layers)
 
-            logging.info(f"Point upload (location list): {len(processed_data)} cities for '{layer_name}', {len(merged)} total")
+            logging.info(f"Point upload (individual): {len(points)} points for '{layer_name}'")
             return {
                 "success": True,
-                "processed": len(df),
-                "cities": len(processed_data),
-                "total": len(merged),
-                "layers": sorted(all_layers),
-                "layer_added": layer_name
+                "processed": len(points),
+                "layer_added": layer_name,
+                "layers": all_layers
             }
 
         elif has_city_state:
@@ -267,10 +251,16 @@ async def upload_city_data(file: UploadFile = File(...)):
 
 @api_router.get("/data/point")
 async def get_point_data():
-    """Get all point data. Checks new collection first, falls back to legacy."""
+    """Get aggregated point data (CLS Customers etc)."""
     data = await db.point_data.find({}, {"_id": 0}).to_list(100000)
     if not data:
         data = await db.city_data.find({}, {"_id": 0}).to_list(10000)
+    return {"data": data}
+
+@api_router.get("/data/locations")
+async def get_location_points():
+    """Get individual location points (Grain Elevators, Feed Stores, etc)."""
+    data = await db.location_points.find({}, {"_id": 0}).to_list(200000)
     return {"data": data}
 
 @api_router.get("/data/city")
