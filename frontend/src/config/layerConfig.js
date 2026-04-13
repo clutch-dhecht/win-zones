@@ -3,65 +3,51 @@
 
 export const LAYER_CONFIG = {
   // --- POINT LAYERS (City-level data with lat/lon) ---
-  "Feed Mills": {
-    type: "point",
-    radius: { enabled: true, default: 50, options: [25, 50, 100] },
-    color: "#B45309",
-    markerColor: "#B45309",
-    order: 1
-  },
-  "Hog Producers": {
-    type: "point",
-    radius: { enabled: false, default: 50, options: [25, 50, 100] },
-    color: "#9F1239",
-    markerColor: "#9F1239",
-    order: 2
-  },
-  "Grain Fumigation": {
-    type: "point",
-    radius: { enabled: true, default: 50, options: [25, 50, 100] },
-    color: "#15803D",
-    markerColor: "#15803D",
-    order: 3
-  },
-  "Customers": {
+  "CLS Customers": {
     type: "point",
     radius: { enabled: true, default: 50, options: [25, 50, 100] },
     color: "#0369A1",
     markerColor: "#0369A1",
-    order: 4
+    order: 1
   },
 
   // --- DENSITY LAYERS (County-level aggregations) ---
-  "1000-plus Acre Growers": {
+  "1000+ Wheat Growers": {
     type: "density",
     radius: { enabled: false },
     color: "#F59E0B",
     fillOpacity: 0.6,
-    order: 5
+    order: 2
   },
   "Growers with On Farm Storage": {
     type: "density",
     radius: { enabled: false },
     color: "#84CC16",
     fillOpacity: 0.6,
-    order: 6
-  },
-  "Grain Retail Handlers": {
-    type: "density",
-    radius: { enabled: false },
-    color: "#14B8A6",
-    fillOpacity: 0.6,
-    order: 7
+    order: 3
   },
 
-  // --- BASE LAYER (Wheat acreage) ---
-  "Acres": {
+  // --- ACREAGE LAYERS ---
+  "Wheat Acres": {
     type: "base",
     radius: { enabled: false },
     color: "#7C3AED",
     fillOpacity: 0.35,
-    order: 8
+    order: 4
+  },
+  "Rice Acres": {
+    type: "base",
+    radius: { enabled: false },
+    color: "#0891B2",
+    fillOpacity: 0.35,
+    order: 5
+  },
+  "Corn Acres": {
+    type: "base",
+    radius: { enabled: false },
+    color: "#DC2626",
+    fillOpacity: 0.35,
+    order: 6
   }
 };
 
