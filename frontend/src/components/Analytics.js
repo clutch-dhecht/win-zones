@@ -11,22 +11,22 @@ const Analytics = ({ topZones, totalCount, winZonesMode, winZoneRankings }) => {
       : 'Highest density + lowest existing coverage';
     const Icon = isCoverage ? MapPin : Target;
     const accentColor = isCoverage ? 'blue' : 'orange';
-    const bgClass = isCoverage ? 'bg-blue-50 border-blue-200' : 'bg-orange-50 border-orange-200';
-    const titleClass = isCoverage ? 'text-blue-800' : 'text-orange-800';
-    const subtitleClass = isCoverage ? 'text-blue-500' : 'text-orange-500';
-    const iconClass = isCoverage ? 'text-blue-600' : 'text-orange-600';
-    const borderClass = isCoverage ? 'border-blue-100' : 'border-orange-100';
+    const bgClass = isCoverage ? 'bg-green-50 border-green-200' : 'bg-orange-50 border-orange-200';
+    const titleClass = isCoverage ? 'text-green-800' : 'text-orange-800';
+    const subtitleClass = isCoverage ? 'text-green-500' : 'text-orange-500';
+    const iconClass = isCoverage ? 'text-green-600' : 'text-orange-600';
+    const borderClass = isCoverage ? 'border-green-100' : 'border-orange-100';
 
     const getScoreColor = (score) => {
       if (isCoverage) {
-        return score >= 70 ? 'text-blue-800' : score >= 40 ? 'text-blue-600' : 'text-blue-400';
+        return score >= 70 ? 'text-green-800' : score >= 40 ? 'text-green-600' : 'text-yellow-600';
       }
       return score >= 70 ? 'text-red-600' : score >= 40 ? 'text-orange-600' : 'text-amber-600';
     };
 
     const getRankColor = (idx) => {
       if (isCoverage) {
-        return idx < 3 ? 'text-blue-700' : idx < 7 ? 'text-blue-500' : 'text-blue-400';
+        return idx < 3 ? 'text-green-700' : idx < 7 ? 'text-green-500' : 'text-yellow-600';
       }
       return idx < 3 ? 'text-red-600' : idx < 7 ? 'text-orange-600' : 'text-amber-600';
     };

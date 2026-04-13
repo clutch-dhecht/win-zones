@@ -215,7 +215,7 @@ const LayerControls = ({ allLayers, activeLayers, onToggle, radiusSettings, onRa
                 onClick={() => onWinZonesToggle('coverage')}
                 className={`text-[10px] px-2 py-1 rounded transition-colors ${
                   winZonesEnabled === 'coverage'
-                    ? 'bg-blue-700 text-white'
+                    ? 'bg-green-700 text-white'
                     : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
                 }`}
                 data-testid="win-mode-coverage"

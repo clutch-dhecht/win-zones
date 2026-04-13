@@ -490,11 +490,11 @@ const MapboxVisualization = ({
                           'interpolate', ['linear'], ['coalesce', ['get', 'coverage_strength'], 0],
                           0, 'rgba(0,0,0,0)',
                           0.05, 'rgba(0,0,0,0)',
-                          0.15, '#DBEAFE',
-                          0.3, '#60A5FA',
-                          0.5, '#2563EB',
-                          0.7, '#1D4ED8',
-                          0.9, '#1E3A8A'
+                          0.15, '#FEF9C3',
+                          0.3, '#FDE047',
+                          0.5, '#84CC16',
+                          0.7, '#16A34A',
+                          0.9, '#14532D'
                         ]
                       : [
                           'interpolate', ['linear'], ['coalesce', ['get', 'win_score'], 0],
@@ -602,10 +602,10 @@ const MapboxVisualization = ({
                             <span className="font-medium">{popupInfo.nearestMiles} mi</span>
                           </div>
                           <div className="text-xs flex justify-between mt-0.5">
-                            <span className={`font-medium ${popupInfo.winMode === 'coverage' ? 'text-blue-600' : 'text-orange-600'}`}>
-                              {popupInfo.winMode === 'coverage' ? 'Coverage Gap:' : 'Opportunity:'}
+                            <span className={`font-medium ${popupInfo.winMode === 'coverage' ? 'text-green-600' : 'text-orange-600'}`}>
+                              {popupInfo.winMode === 'coverage' ? 'Coverage:' : 'Opportunity:'}
                             </span>
-                            <span className={`font-bold ${popupInfo.winMode === 'coverage' ? 'text-blue-700' : 'text-orange-700'}`}>
+                            <span className={`font-bold ${popupInfo.winMode === 'coverage' ? 'text-green-700' : 'text-orange-700'}`}>
                               {Math.round((popupInfo.winScore || 0) * 100)}%
                             </span>
                           </div>
@@ -633,7 +633,7 @@ const MapboxVisualization = ({
                   <div className="font-medium">{hoverInfo.county} Co., {hoverInfo.state}</div>
                   {hoverInfo.detail && <div className="opacity-80 mt-0.5">{hoverInfo.detail}</div>}
                   {hoverInfo.winScore != null && (
-                    <div className={`mt-0.5 ${hoverInfo.winMode === 'coverage' ? 'text-blue-300' : 'text-orange-300'}`}>
+                    <div className={`mt-0.5 ${hoverInfo.winMode === 'coverage' ? 'text-green-300' : 'text-orange-300'}`}>
                       {hoverInfo.winMode === 'coverage' ? 'Gap' : 'Opp'}: {hoverInfo.winScore}% {hoverInfo.nearestMiles != null && `· ${hoverInfo.nearestMiles}mi to nearest`}
                     </div>
                   )}
@@ -662,11 +662,11 @@ const MapboxVisualization = ({
                 <div className="flex h-2.5 rounded-full overflow-hidden flex-1">
                   {winZonesEnabled === 'coverage' ? (
                     <>
-                      <div className="flex-1 bg-blue-100" />
-                      <div className="flex-1 bg-blue-300" />
-                      <div className="flex-1 bg-blue-500" />
-                      <div className="flex-1 bg-blue-700" />
-                      <div className="flex-1 bg-blue-900" />
+                      <div className="flex-1 bg-yellow-100" />
+                      <div className="flex-1 bg-yellow-300" />
+                      <div className="flex-1 bg-lime-500" />
+                      <div className="flex-1 bg-green-600" />
+                      <div className="flex-1 bg-green-900" />
                     </>
                   ) : (
                     <>
