@@ -142,15 +142,13 @@ const LayerGroup = ({ title, layers, activeLayers, onToggle, layerColors, onColo
   );
 };
 
-const LayerControls = ({ allLayers, activeLayers, onToggle, radiusSettings, onRadiusChange, layerColors, onColorChange, winZonesEnabled, onWinZonesToggle, hasPointData, hasDensityData }) => {
+const LayerControls = ({ allLayers, activeLayers, onToggle, radiusSettings, onRadiusChange, layerColors, onColorChange }) => {
   const pointLayerNames = getPointLayers();
   const densityLayerNames = getDensityLayers();
 
   const pointLayers = allLayers.filter(l => pointLayerNames.includes(l));
   const densityLayers = allLayers.filter(l => densityLayerNames.includes(l));
   const otherLayers = allLayers.filter(l => !pointLayerNames.includes(l) && !densityLayerNames.includes(l));
-
-  const canShowWinZones = hasPointData && hasDensityData;
 
   return (
     <div data-testid="layer-controls">
@@ -189,59 +187,6 @@ const LayerControls = ({ allLayers, activeLayers, onToggle, radiusSettings, onRa
           radiusSettings={radiusSettings}
           onRadiusChange={onRadiusChange}
         />
-      )}
-
-      {/* Win Zones Analysis */}
-      {canShowWinZones && (
-        <div className="mt-3 pt-3 border-t border-stone-200">
-          <div className="flex items-center gap-2 py-1">
-            <div className="w-3.5 h-3.5 rounded-full flex-shrink-0 bg-gradient-to-r from-orange-500 to-red-600" />
-            <span className={`text-sm flex-1 font-medium ${winZonesEnabled ? 'text-red-700' : 'text-stone-400'}`}>
-              Win Zones
-            </span>
-            <div onClick={(e) => e.stopPropagation()}>
-              <Switch
-                checked={!!winZonesEnabled}
-                onCheckedChange={(checked) => onWinZonesToggle(checked ? 'opportunity' : null)}
-                className="scale-75"
-                data-testid="win-zones-toggle"
-              />
-            </div>
-          </div>
-
-          {winZonesEnabled && (
-            <div className="ml-5 mt-1 flex gap-1">
-              <button
-                onClick={() => onWinZonesToggle('coverage')}
-                className={`text-[10px] px-2 py-1 rounded transition-colors ${
-                  winZonesEnabled === 'coverage'
-                    ? 'bg-green-700 text-white'
-                    : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
-                }`}
-                data-testid="win-mode-coverage"
-              >
-                Coverage
-              </button>
-              <button
-                onClick={() => onWinZonesToggle('opportunity')}
-                className={`text-[10px] px-2 py-1 rounded transition-colors ${
-                  winZonesEnabled === 'opportunity'
-                    ? 'bg-orange-600 text-white'
-                    : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
-                }`}
-                data-testid="win-mode-opportunity"
-              >
-                Opportunity
-              </button>
-            </div>
-          )}
-
-          <p className="text-[10px] text-stone-400 ml-5 mt-1 leading-tight">
-            {!winZonesEnabled && 'Overlay showing coverage & opportunity'}
-            {winZonesEnabled === 'coverage' && 'Where you ARE — your existing footprint'}
-            {winZonesEnabled === 'opportunity' && 'Where you\'re NOT — highest density gaps'}
-          </p>
-        </div>
       )}
     </div>
   );
