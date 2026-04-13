@@ -135,7 +135,9 @@ const MapDashboard = ({ apiUrl }) => {
         let combinedLayers = [];
         if (pointLoaded.length > 0) {
           setPointData(pointLoaded);
-          combinedLayers = [...combinedLayers, ...Object.keys(pointLoaded[0].layers)];
+          const pointLayers = new Set();
+          pointLoaded.forEach(d => Object.keys(d.layers).forEach(l => pointLayers.add(l)));
+          combinedLayers = [...combinedLayers, ...pointLayers];
         }
         if (densityLoaded.length > 0) {
           setDensityData(densityLoaded);

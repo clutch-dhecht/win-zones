@@ -105,47 +105,156 @@ def geocode_city_advanced(city, state):
     geocode_cache[cache_key] = None
     return None
 
+# Map of first-column names to layer names for location-list CSVs
+LOCATION_LAYER_MAP = {
+    'Grain Elevators': 'Grain Elevators',
+    'Feed Manufacturers': 'Feed Manufacturers',
+    'Animal feed stores': 'Feed Stores',
+    'Pest Control Companies': 'Pest Control',
+}
+
 # ── POINT DATA (City, State + numeric layers) ──
 
 @api_router.post("/upload/point")
 async def upload_point_data(file: UploadFile = File(...)):
-    """Upload point-level CSV data (City/State with numeric layers)"""
+    """Upload point-level CSV data. Supports two formats:
+    1. City/State + numeric layer columns (aggregated)
+    2. Location lists with lat/lon (name, street, city, state, zip, lat, lon)
+    """
     try:
         contents = await file.read()
         df = pd.read_csv(io.BytesIO(contents))
 
-        if 'State' not in df.columns or 'City' not in df.columns:
-            raise HTTPException(status_code=400, detail="CSV must have 'State' and 'City' columns")
+        # Detect format: location list (has latitude/longitude) vs aggregated (City/State + numbers)
+        has_coords = 'latitude' in df.columns and 'longitude' in df.columns
+        has_city_state = 'City' in df.columns and 'State' in df.columns
 
-        df = df[df['State'].apply(is_us_state)]
-        layer_columns = [col for col in df.columns if col not in ['State', 'City']]
+        if has_coords:
+            # Location list format — first column is the business type name
+            first_col = df.columns[0]
+            layer_name = LOCATION_LAYER_MAP.get(first_col, first_col)
 
-        processed_data = []
-        skipped_count = 0
+            # Normalize state column (might be lowercase 'state')
+            state_col = 'state' if 'state' in df.columns else 'State'
+            city_col = 'city' if 'city' in df.columns else 'City'
 
-        for idx, row in df.iterrows():
-            geo = geocode_city_advanced(row['City'], row['State'])
-            if geo:
-                layers = {col: int(row[col]) if pd.notna(row[col]) else 0 for col in layer_columns}
+            # Filter valid rows
+            df = df.dropna(subset=['latitude', 'longitude', state_col, city_col])
+            df = df[df[state_col].apply(lambda s: is_us_state(str(s).strip()))]
+
+            # Deduplicate by lat/lon (some CSVs have duplicate rows)
+            df = df.drop_duplicates(subset=['latitude', 'longitude', first_col])
+
+            # Aggregate by city/state: count occurrences
+            grouped = df.groupby([city_col, state_col]).agg(
+                lat=('latitude', 'first'),
+                lon=('longitude', 'first'),
+                count=(first_col, 'count')
+            ).reset_index()
+
+            processed_data = []
+            for _, row in grouped.iterrows():
                 processed_data.append({
-                    'state': row['State'],
-                    'city': row['City'],
-                    'lat': geo['lat'],
-                    'lon': geo['lon'],
-                    'layers': layers
+                    'state': str(row[state_col]).strip(),
+                    'city': str(row[city_col]).strip(),
+                    'lat': float(row['lat']),
+                    'lon': float(row['lon']),
+                    'layers': {layer_name: int(row['count'])}
                 })
-            else:
-                skipped_count += 1
 
-            if (idx + 1) % 50 == 0:
-                logging.info(f"Geocoding progress: {idx + 1}/{len(df)}, {len(processed_data)} successful")
+            # Merge with existing point data
+            existing = await db.point_data.find({}, {"_id": 0}).to_list(50000)
+            lookup = {}
+            for doc in existing:
+                key = f"{doc['state']}|{doc['city']}"
+                lookup[key] = doc
+            for item in processed_data:
+                key = f"{item['state']}|{item['city']}"
+                if key in lookup:
+                    lookup[key]['layers'][layer_name] = item['layers'][layer_name]
+                    # Update coords if not already set
+                    if not lookup[key].get('lat'):
+                        lookup[key]['lat'] = item['lat']
+                        lookup[key]['lon'] = item['lon']
+                else:
+                    lookup[key] = item
 
-        await db.point_data.delete_many({})
-        if processed_data:
-            await db.point_data.insert_many(processed_data)
+            merged = list(lookup.values())
+            await db.point_data.delete_many({})
+            if merged:
+                await db.point_data.insert_many(merged)
 
-        logging.info(f"Point upload: {len(processed_data)} geocoded, {skipped_count} skipped")
-        return {"success": True, "processed": len(processed_data), "skipped": skipped_count, "layers": layer_columns}
+            # Collect all layer names
+            all_layers = set()
+            for d in merged:
+                all_layers.update(d['layers'].keys())
+
+            logging.info(f"Point upload (location list): {len(processed_data)} cities for '{layer_name}', {len(merged)} total")
+            return {
+                "success": True,
+                "processed": len(df),
+                "cities": len(processed_data),
+                "total": len(merged),
+                "layers": sorted(all_layers),
+                "layer_added": layer_name
+            }
+
+        elif has_city_state:
+            # Original aggregated format
+            df = df[df['State'].apply(is_us_state)]
+            skip_cols = {'State', 'City', 'Program', 'Year', 'Source', 'Period'}
+            layer_columns = [col for col in df.columns if col not in skip_cols]
+
+            processed_data = []
+            skipped_count = 0
+
+            for idx, row in df.iterrows():
+                geo = geocode_city_advanced(row['City'], row['State'])
+                if geo:
+                    layers = {col: int(row[col]) if pd.notna(row[col]) else 0 for col in layer_columns}
+                    processed_data.append({
+                        'state': row['State'],
+                        'city': row['City'],
+                        'lat': geo['lat'],
+                        'lon': geo['lon'],
+                        'layers': layers
+                    })
+                else:
+                    skipped_count += 1
+
+                if (idx + 1) % 50 == 0:
+                    logging.info(f"Geocoding progress: {idx + 1}/{len(df)}, {len(processed_data)} successful")
+
+            # Merge with existing
+            existing = await db.point_data.find({}, {"_id": 0}).to_list(50000)
+            lookup = {}
+            for doc in existing:
+                key = f"{doc['state']}|{doc['city']}"
+                lookup[key] = doc
+            for item in processed_data:
+                key = f"{item['state']}|{item['city']}"
+                if key in lookup:
+                    lookup[key]['layers'].update(item['layers'])
+                else:
+                    lookup[key] = item
+
+            merged = list(lookup.values())
+            await db.point_data.delete_many({})
+            if merged:
+                await db.point_data.insert_many(merged)
+
+            all_layers = set()
+            for d in merged:
+                all_layers.update(d['layers'].keys())
+
+            logging.info(f"Point upload (aggregated): {len(processed_data)} geocoded, {skipped_count} skipped, {len(merged)} total")
+            return {"success": True, "processed": len(processed_data), "skipped": skipped_count, "total": len(merged), "layers": sorted(all_layers)}
+
+        else:
+            raise HTTPException(status_code=400, detail="CSV must have either 'City'+'State' or 'latitude'+'longitude' columns")
+
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Error processing point data: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -158,7 +267,7 @@ async def upload_city_data(file: UploadFile = File(...)):
 @api_router.get("/data/point")
 async def get_point_data():
     """Get all point data. Checks new collection first, falls back to legacy."""
-    data = await db.point_data.find({}, {"_id": 0}).to_list(10000)
+    data = await db.point_data.find({}, {"_id": 0}).to_list(100000)
     if not data:
         data = await db.city_data.find({}, {"_id": 0}).to_list(10000)
     return {"data": data}
