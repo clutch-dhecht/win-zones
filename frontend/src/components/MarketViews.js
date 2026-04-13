@@ -1,6 +1,20 @@
 import React from 'react';
 import { Wheat, Leaf, Bug } from 'lucide-react';
 
+// Simple pig SVG icon
+const PigIcon = ({ className }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <circle cx="10" cy="12" r="7" />
+    <circle cx="5" cy="10" r="1.5" fill="currentColor" stroke="none" />
+    <ellipse cx="10" cy="14" rx="2.5" ry="1.5" />
+    <circle cx="9" cy="13.5" r="0.4" fill="currentColor" stroke="none" />
+    <circle cx="11" cy="13.5" r="0.4" fill="currentColor" stroke="none" />
+    <path d="M17 10 C19 8, 21 9, 20 11" />
+    <path d="M17 14 C19 16, 21 15, 20 13" />
+    <circle cx="7.5" cy="10.5" r="0.6" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 const MARKET_PRESETS = {
   rice: {
     label: 'Rice',
@@ -55,8 +69,7 @@ const MarketIcon = ({ type, className }) => {
   if (type === 'grain') return <Wheat className={className} />;
   if (type === 'corn') return <Leaf className={className} />;
   if (type === 'pest') return <Bug className={className} />;
-  // hog - use a simple text icon
-  if (type === 'hog') return <span className={`font-bold ${className}`} style={{ fontSize: '14px', lineHeight: 1 }}>H</span>;
+  if (type === 'hog') return <PigIcon className={className} />;
   return null;
 };
 

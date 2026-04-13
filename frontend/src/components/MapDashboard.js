@@ -4,6 +4,7 @@ import FileUpload from './FileUpload';
 import MapboxVisualization from './MapboxVisualization';
 import LayerControls from './LayerControls';
 import MarketViews, { getMarketPreset, detectActiveMarket, MARKET_KEYS } from './MarketViews';
+import LayerStats from './LayerStats';
 import Analytics from './Analytics';
 import { toast } from 'sonner';
 import { getLayerConfig } from '../config/layerConfig';
@@ -191,6 +192,18 @@ const MapDashboard = ({ apiUrl }) => {
                 allLayers={allLayers}
                 onMarketSelect={handleMarketSelect}
                 activeMarket={activeMarket}
+              />
+            </div>
+          )}
+
+          {/* Layer Stats Summary */}
+          {hasData && Object.values(activeLayers).some(v => v) && (
+            <div className="px-4 py-3 border-b border-stone-100">
+              <LayerStats
+                activeLayers={activeLayers}
+                pointData={pointData}
+                locationData={locationData}
+                densityData={densityData}
               />
             </div>
           )}
