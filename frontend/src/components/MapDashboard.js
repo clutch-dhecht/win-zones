@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { getLayerConfig } from '../config/layerConfig';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
+import { Slider } from '@/components/ui/slider';
 
 const MapDashboard = ({ apiUrl }) => {
   const [pointData, setPointData] = useState([]);
@@ -24,7 +25,8 @@ const MapDashboard = ({ apiUrl }) => {
   const [winZoneRankings, setWinZoneRankings] = useState([]);
   const [enrichedFeatures, setEnrichedFeatures] = useState([]);
   const [winZones, setWinZones] = useState([]);
-  const [selectedState, setSelectedState] = useState(null);
+  const [selectedStates, setSelectedStates] = useState(null); // string[] | null
+  const [zoneSizeCap, setZoneSizeCap] = useState(50);
   const [topZones, setTopZones] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -149,15 +151,15 @@ const MapDashboard = ({ apiUrl }) => {
   const hasData = pointData.length > 0 || locationData.length > 0 || densityData.length > 0;
 
   // Filter data by selected state for stats
-  const filteredPointData = selectedState ? pointData.filter(d => d.state === selectedState) : pointData;
-  const filteredLocationData = selectedState ? locationData.filter(d => {
-    const s = d.state.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-    return s === selectedState;
-  }) : locationData;
-  const filteredDensityData = selectedState ? densityData.filter(d => {
-    const s = d.state.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-    return s === selectedState;
-  }) : densityData;
+  const matchesStateFilter = (stateName) => {
+    if (!selectedStates || selectedStates.length === 0) return true;
+    const normalized = stateName.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    return selectedStates.includes(normalized);
+  };
+
+  const filteredPointData = selectedStates ? pointData.filter(d => matchesStateFilter(d.state)) : pointData;
+  const filteredLocationData = selectedStates ? locationData.filter(d => matchesStateFilter(d.state)) : locationData;
+  const filteredDensityData = selectedStates ? densityData.filter(d => matchesStateFilter(d.state)) : densityData;
 
   const sidebarContent = (
     <>
@@ -177,8 +179,8 @@ const MapDashboard = ({ apiUrl }) => {
       {hasData && (
         <div className="px-4 py-2 border-b border-stone-100">
           <StateFilter
-            selectedState={selectedState}
-            onStateChange={setSelectedState}
+            selectedStates={selectedStates}
+            onStatesChange={setSelectedStates}
             densityData={densityData}
             locationData={locationData}
           />
@@ -213,6 +215,27 @@ const MapDashboard = ({ apiUrl }) => {
               <button onClick={() => setWinZonesMode('opportunity')} className={`text-[10px] px-2 py-1 rounded transition-colors ${winZonesMode === 'opportunity' ? 'bg-orange-600 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'}`} data-testid="win-mode-opportunity">Opportunity</button>
             </div>
           )}
+          {winZonesMode && (
+            <div className="ml-5 mt-2">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] text-stone-400">Zone Size</span>
+                <span className="text-[10px] font-medium text-stone-600">{zoneSizeCap} counties</span>
+              </div>
+              <Slider
+                value={[zoneSizeCap]}
+                onValueChange={([v]) => setZoneSizeCap(v)}
+                min={25}
+                max={100}
+                step={5}
+                className="w-full"
+                data-testid="zone-size-slider"
+              />
+              <div className="flex justify-between text-[9px] text-stone-300 mt-0.5">
+                <span>25</span>
+                <span>100</span>
+              </div>
+            </div>
+          )}
           <p className="text-[10px] text-stone-400 ml-5 mt-1 leading-tight">
             {!winZonesMode && 'Strategic overlay for coverage & opportunity'}
             {winZonesMode === 'coverage' && 'Where you ARE — your existing footprint'}
@@ -231,7 +254,8 @@ const MapDashboard = ({ apiUrl }) => {
             enrichedFeatures={enrichedFeatures}
             activeLayers={activeLayers}
             winZonesMode={winZonesMode}
-            selectedState={selectedState}
+            selectedStates={selectedStates}
+            zoneSizeCap={zoneSizeCap}
             densityData={densityData}
             locationData={locationData}
             pointData={pointData}
@@ -312,7 +336,7 @@ const MapDashboard = ({ apiUrl }) => {
             onWinZoneRankings={setWinZoneRankings}
             onEnrichedFeatures={setEnrichedFeatures}
             onMapZoom={(fn) => { mapZoomRef.current = fn; }}
-            selectedState={selectedState}
+            selectedStates={selectedStates}
             hasData={hasData}
           />
         </div>

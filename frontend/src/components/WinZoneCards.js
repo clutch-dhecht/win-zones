@@ -35,7 +35,7 @@ const formatNum = (v) => {
 
 // Cluster adjacent high-scoring counties into contiguous zones
 // Uses grid-based spatial grouping: counties within ~75mi are merged
-const clusterCounties = (counties) => {
+const clusterCounties = (counties, maxSize = 50) => {
   if (counties.length === 0) return [];
 
   // Sort by score descending
@@ -54,11 +54,11 @@ const clusterCounties = (counties) => {
     // Expand: find all nearby high-scoring counties and merge them in
     // Cap at 40 counties to keep zones as actionable regional blocks
     let changed = true;
-    while (changed && cluster.length < 50) {
+    while (changed && cluster.length < maxSize) {
       changed = false;
       for (const candidate of sorted) {
         if (used.has(candidate.id)) continue;
-        if (cluster.length >= 50) break;
+        if (cluster.length >= maxSize) break;
         // Check if candidate is close to ANY county in this cluster
         for (const member of cluster) {
           const dist = quickDist(member.lat, member.lon, candidate.lat, candidate.lon);
@@ -137,7 +137,8 @@ const WinZoneCards = ({
   enrichedFeatures,
   activeLayers,
   winZonesMode,
-  selectedState,
+  selectedStates,
+  zoneSizeCap = 50,
   densityData,
   locationData,
   pointData,
@@ -158,7 +159,7 @@ const WinZoneCards = ({
         const score = f.properties[scoreKey] || 0;
         if (score < 0.05) return false;
         if (f.properties.density_total <= 0) return false;
-        if (selectedState && f.properties.state_name !== selectedState) return false;
+        if (selectedStates && selectedStates.length > 0 && !selectedStates.includes(f.properties.state_name)) return false;
         return true;
       })
       .map(f => {
@@ -177,7 +178,7 @@ const WinZoneCards = ({
       .sort((a, b) => b.score - a.score);
 
     // Cluster into contiguous zones
-    const clusters = clusterCounties(candidates);
+    const clusters = clusterCounties(candidates, zoneSizeCap);
 
     // Build zone objects from top 3 clusters — prefer big, high-scoring zones
     // Score clusters by: average score × log(county count) to balance size and quality
@@ -262,7 +263,7 @@ const WinZoneCards = ({
         countyIds,
       };
     });
-  }, [enrichedFeatures, activeLayers, winZonesMode, selectedState, locationData, pointData]);
+  }, [enrichedFeatures, activeLayers, winZonesMode, selectedStates, zoneSizeCap, locationData, pointData]);
 
   // Emit zones for map outlines
   React.useEffect(() => {

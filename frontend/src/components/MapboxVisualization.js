@@ -84,7 +84,7 @@ const MapboxVisualization = ({
   onWinZoneRankings,
   onEnrichedFeatures,
   onMapZoom,
-  selectedState,
+  selectedStates,
   hasData
 }) => {
   const [viewState, setViewState] = useState({ longitude: -97, latitude: 39, zoom: 4, pitch: 0, bearing: 0 });
@@ -353,9 +353,9 @@ const MapboxVisualization = ({
 
   // Also handle state filter zoom
   useEffect(() => {
-    if (!selectedState || !enrichedCountiesGeoJSON) return;
+    if (!selectedStates || selectedStates.length === 0 || !enrichedCountiesGeoJSON) return;
     const stateFeatures = enrichedCountiesGeoJSON.features.filter(
-      f => f.properties.state_name === selectedState
+      f => selectedStates.includes(f.properties.state_name)
     );
     if (stateFeatures.length === 0) return;
 
@@ -376,7 +376,7 @@ const MapboxVisualization = ({
     if (map && minLon < maxLon) {
       map.fitBounds([[minLon, minLat], [maxLon, maxLat]], { padding: 40, duration: 1200 });
     }
-  }, [selectedState, enrichedCountiesGeoJSON]);
+  }, [selectedStates, enrichedCountiesGeoJSON]);
 
   // Build zone outline GeoJSON from winZones county IDs
   const zoneOutlinesGeoJSON = useMemo(() => {
