@@ -574,7 +574,7 @@ const MapboxVisualization = ({
             )}
 
             {/* Win Zone outlines — bold borders around each zone's counties */}
-            {zoneOutlinesGeoJSON && (
+            {winZonesEnabled && zoneOutlinesGeoJSON && (
               <Source id="zone-outlines" type="geojson" data={zoneOutlinesGeoJSON}>
                 <Layer
                   id="zone-outline-fill"
