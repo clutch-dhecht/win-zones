@@ -1,0 +1,78 @@
+{
+  "summary": "Completed comprehensive frontend testing of Win Zones feature fixes. All 10 features tested and passing. Key verifications: (1) Kansas appears as #2 in top Win Zones for Wheat market, (2) Zones 4-5 have opacity-40 class when expanded, (3) Zones 4-5 have EyeOff state (map outlines hidden by default), (4) All mode switching and controls work correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Wheat market view shows Kansas in top 3 Win Zones (#2 Central Kansas) - PASS",
+    "Win Zone 4 and 5 cards show opacity-40 class when expanded via 'Show all zones' - PASS",
+    "Win Zone 4 and 5 do NOT have map outlines visible (EyeOff state, title='Show on map') - PASS",
+    "Win Zones toggle ON/OFF works correctly - PASS",
+    "Switching between Market/Coverage/Opportunity modes works - PASS",
+    "Zone visibility eye toggle works (click toggles between 'Show on map' and 'Hide on map') - PASS",
+    "Zone focus Adjust button shows Local/Regional/Territory toggles - PASS",
+    "Local/Regional/Territory focus toggles work correctly - PASS",
+    "Zoom to zone (crosshair button) works - map zooms to zone area - PASS",
+    "Show all zones / Show less toggle works - PASS",
+    "Market views (Rice, Wheat, Corn, Hogs, Pest Control) switch correctly - PASS"
+  ],
+  "test_report_links": [
+    "/app/test_reports/iteration_6.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend only testing)",
+    "frontend": "100% (11/11 tests passed)"
+  },
+  "test_credentials": "No authentication required. Mapbox token configured in frontend/.env",
+  "seed_data_creation": "Data already loaded from previous sessions",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Win Zones feature fully working with all fixes verified: (1) scoreKey for 'market' mode uses 'market_score' so Kansas appears in top zones, (2) MARKET_COVERAGE_CAP=0.85 allows 3+ zones, (3) useEffect auto-hides zone 4+ map outlines by default. Key data-testids: market-{rice|wheat|corn|hogs|pest}, win-zones-toggle, win-mode-{market|coverage|opportunity}, zone-focus-{local|regional|territory}, win-zone-card-{0-4}, zone-visibility-{0-4}, zoom-zone-{0-4}, show-all-zones.",
+  "features_verified": {
+    "kansas_in_top_zones": {
+      "status": "PASS",
+      "details": "Central Kansas is #2 in Top Market Zones for Wheat (75 counties, 19% of market, 96% coverage)"
+    },
+    "zone_4_5_opacity": {
+      "status": "PASS",
+      "details": "Zones 4 (North Texas) and 5 (SouthWest Idaho) have opacity-40 class when shown"
+    },
+    "zone_4_5_hidden_outlines": {
+      "status": "PASS",
+      "details": "Zones 4-5 have title='Show on map' indicating map outlines are hidden by default"
+    },
+    "mode_switching": {
+      "status": "PASS",
+      "details": "Market (bg-stone-800), Coverage (bg-green-700), Opportunity (bg-orange-600) all toggle correctly"
+    },
+    "zone_focus": {
+      "status": "PASS",
+      "details": "Local/Regional/Territory focus options appear via Adjust button and toggle correctly"
+    },
+    "zone_visibility_toggle": {
+      "status": "PASS",
+      "details": "Eye icon toggles between 'Show on map' (hidden) and 'Hide on map' (visible)"
+    },
+    "zoom_to_zone": {
+      "status": "PASS",
+      "details": "Crosshair button zooms map to zone's bounding box"
+    },
+    "show_all_zones": {
+      "status": "PASS",
+      "details": "Toggle between 'Show all 5 zones' and 'Show less' works correctly"
+    },
+    "market_views": {
+      "status": "PASS",
+      "details": "All 5 market views (Rice, Wheat, Corn, Hogs, Pest Control) switch correctly"
+    }
+  }
+}

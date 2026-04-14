@@ -152,15 +152,21 @@ const WinZoneCards = ({
   const zones = useMemo(() => {
     if (!enrichedFeatures || enrichedFeatures.length === 0) return [];
 
+    const isMarket = winZonesMode === 'market';
     const isCoverage = winZonesMode === 'coverage';
-    const scoreKey = isCoverage ? 'coverage_strength' : 'win_score';
+    const scoreKey = isCoverage ? 'coverage_strength' : isMarket ? 'market_score' : 'win_score';
 
     // Filter features to those with meaningful scores
     const candidates = enrichedFeatures
       .filter(f => {
-        const score = f.properties[scoreKey] || 0;
-        if (score < 0.05) return false;
-        if (f.properties.density_total <= 0) return false;
+        // Market mode: filter on density, not score (avoid penalizing well-covered markets)
+        if (isMarket) {
+          if (f.properties.density_total <= 0) return false;
+        } else {
+          const score = f.properties[scoreKey] || 0;
+          if (score < 0.05) return false;
+          if (f.properties.density_total <= 0) return false;
+        }
         if (selectedStates && selectedStates.length > 0 && !selectedStates.includes(f.properties.state_name)) return false;
         return true;
       })
@@ -263,7 +269,7 @@ const WinZoneCards = ({
     });
 
     const MAX_ZONES = 5;
-    const MARKET_COVERAGE_CAP = 0.5;
+    const MARKET_COVERAGE_CAP = 0.85;
     const totalMarketDensity = candidates.reduce((s, c) => s + c.rawDensity, 0);
 
     const topClusters = [];
@@ -356,6 +362,21 @@ const WinZoneCards = ({
       };
     });
   }, [enrichedFeatures, activeLayers, winZonesMode, selectedStates, zoneFocus, locationData, pointData]);
+
+  // Default: zones 4+ (index >= 3) hidden on map unless user manually toggles
+  React.useEffect(() => {
+    if (zones.length > 0) {
+      setZoneVisibility(prev => {
+        const next = { ...prev };
+        zones.forEach((_, idx) => {
+          if (idx >= 3 && !(idx in prev)) {
+            next[idx] = false;
+          }
+        });
+        return next;
+      });
+    }
+  }, [zones]);
 
   // Emit zones for map outlines — only visible ones
   React.useEffect(() => {
