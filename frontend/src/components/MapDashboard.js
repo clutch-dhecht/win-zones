@@ -30,6 +30,7 @@ const MapDashboard = ({ apiUrl }) => {
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [showZoneFocus, setShowZoneFocus] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const mapZoomRef = useRef(null);
 
@@ -212,10 +213,16 @@ const MapDashboard = ({ apiUrl }) => {
             <div className="ml-5 mt-1.5 flex items-center gap-1">
               <button onClick={() => setWinZonesMode('coverage')} className={`text-[10px] px-2 py-1 rounded transition-colors ${winZonesMode === 'coverage' ? 'bg-green-700 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'}`} data-testid="win-mode-coverage">Coverage</button>
               <button onClick={() => setWinZonesMode('opportunity')} className={`text-[10px] px-2 py-1 rounded transition-colors ${winZonesMode === 'opportunity' ? 'bg-orange-600 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'}`} data-testid="win-mode-opportunity">Opportunity</button>
+              <button
+                onClick={() => setShowZoneFocus(v => !v)}
+                className="text-[10px] text-stone-400 hover:text-stone-600 ml-auto"
+              >
+                {showZoneFocus ? 'Hide' : 'Adjust'}
+              </button>
             </div>
           )}
-          {winZonesMode && (
-            <div className="ml-5 mt-2 flex items-center gap-1">
+          {winZonesMode && showZoneFocus && (
+            <div className="ml-5 mt-1.5 flex items-center gap-1">
               <span className="text-[10px] text-stone-400 mr-1">Focus:</span>
               {[
                 { key: 'local', label: 'Local' },
