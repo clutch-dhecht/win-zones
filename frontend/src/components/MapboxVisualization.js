@@ -581,16 +581,26 @@ const MapboxVisualization = ({
                   type="fill"
                   paint={{
                     'fill-color': ['get', 'zone_color'],
-                    'fill-opacity': 0.08
+                    'fill-opacity': 0.15
                   }}
                 />
                 <Layer
                   id="zone-outline-border"
                   type="line"
                   paint={{
+                    'line-color': '#1C1917',
+                    'line-width': ['interpolate', ['linear'], ['zoom'], 3, 2.5, 6, 4, 10, 5],
+                    'line-opacity': 0.85
+                  }}
+                />
+                <Layer
+                  id="zone-outline-border-inner"
+                  type="line"
+                  paint={{
                     'line-color': ['get', 'zone_color'],
-                    'line-width': ['interpolate', ['linear'], ['zoom'], 3, 2, 6, 3, 10, 4],
-                    'line-opacity': 0.9
+                    'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1, 6, 2, 10, 2.5],
+                    'line-opacity': 1,
+                    'line-dasharray': [3, 2]
                   }}
                 />
               </Source>
