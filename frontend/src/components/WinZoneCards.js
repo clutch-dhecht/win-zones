@@ -193,55 +193,88 @@ const WinZoneCards = ({
 
     // Zone focus controls merge distance and max size
     const FOCUS_SETTINGS = {
-      local:     { mergeDist: 30, maxSize: 15 },
-      regional:  { mergeDist: 80, maxSize: 50 },
-      territory: { mergeDist: 130, maxSize: 100 },
+      local:     { mergeDist: 40, maxSize: 25 },
+      regional:  { mergeDist: 100, maxSize: 75 },
+      territory: { mergeDist: 150, maxSize: 150 },
     };
     const { mergeDist, maxSize } = FOCUS_SETTINGS[zoneFocus] || FOCUS_SETTINGS.regional;
 
-    // Cluster into contiguous zones
-    const clusters = clusterCounties(candidates, maxSize, mergeDist);
+    // STATE-SEEDED CLUSTERING
+    // 1. Group candidates by state, rank states by total raw density
+    const stateGroups = {};
+    candidates.forEach(c => {
+      if (!stateGroups[c.state]) stateGroups[c.state] = { total: 0, counties: [] };
+      stateGroups[c.state].total += c.rawDensity;
+      stateGroups[c.state].counties.push(c);
+    });
 
-    // Rank zones by total raw density — biggest markets win
-    // Enforce geographic diversity: Zone 2 must be 200mi+ from Zone 1, Zone 3 from both
-    const sortedClusters = clusters
-      .filter(c => c.length >= 3)
-      .sort((a, b) => {
-        const totalA = a.reduce((s, c) => s + c.rawDensity, 0);
-        const totalB = b.reduce((s, c) => s + c.rawDensity, 0);
-        return totalB - totalA;
-      });
+    const rankedStates = Object.entries(stateGroups)
+      .sort((a, b) => b[1].total - a[1].total)
+      .map(([state]) => state);
 
-    const MIN_ZONE_SEPARATION = 0; // no forced separation — market density drives ranking
+    // 2. For each top state, seed a zone from its highest-density county
+    //    Expand outward using merge distance (can cross state lines)
+    const used = new Set();
+    const allClusters = [];
+
+    for (const state of rankedStates) {
+      const stateCounties = stateGroups[state].counties
+        .filter(c => !used.has(c.id))
+        .sort((a, b) => b.rawDensity - a.rawDensity);
+
+      if (stateCounties.length === 0) continue;
+
+      // Seed from highest-density unclaimed county in this state
+      const seed = stateCounties[0];
+      if (used.has(seed.id)) continue;
+
+      const cluster = [seed];
+      used.add(seed.id);
+
+      // Expand: grab nearby candidates (any state) within merge distance
+      let changed = true;
+      while (changed && cluster.length < maxSize) {
+        changed = false;
+        for (const candidate of candidates) {
+          if (used.has(candidate.id)) continue;
+          if (cluster.length >= maxSize) break;
+          for (const member of cluster) {
+            const dist = quickDist(member.lat, member.lon, candidate.lat, candidate.lon);
+            if (dist < mergeDist) {
+              cluster.push(candidate);
+              used.add(candidate.id);
+              changed = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (cluster.length >= 3) {
+        allClusters.push(cluster);
+      }
+    }
+
+    // Rank clusters by total raw density
+    const sortedClusters = allClusters.sort((a, b) => {
+      const totalA = a.reduce((s, c) => s + c.rawDensity, 0);
+      const totalB = b.reduce((s, c) => s + c.rawDensity, 0);
+      return totalB - totalA;
+    });
+
     const MAX_ZONES = 5;
-    const MARKET_COVERAGE_CAP = 0.5; // stop generating zones after 50% market captured
-
-    // Total market density across all candidates
+    const MARKET_COVERAGE_CAP = 0.5;
     const totalMarketDensity = candidates.reduce((s, c) => s + c.rawDensity, 0);
 
     const topClusters = [];
-    const zoneCenters = [];
     let cumulativeDensity = 0;
 
     for (const cluster of sortedClusters) {
       if (topClusters.length >= MAX_ZONES) break;
-      // Stop if we've captured 50%+ of market (but always show at least 1)
       if (topClusters.length >= 1 && totalMarketDensity > 0 && cumulativeDensity / totalMarketDensity >= MARKET_COVERAGE_CAP) break;
 
-      let cLat = 0, cLon = 0;
-      cluster.forEach(c => { cLat += c.lat; cLon += c.lon; });
-      cLat /= cluster.length;
-      cLon /= cluster.length;
-
-      const tooClose = zoneCenters.some(([zLat, zLon]) =>
-        quickDist(cLat, cLon, zLat, zLon) < MIN_ZONE_SEPARATION
-      );
-
-      if (!tooClose) {
-        topClusters.push(cluster);
-        zoneCenters.push([cLat, cLon]);
-        cumulativeDensity += cluster.reduce((s, c) => s + c.rawDensity, 0);
-      }
+      topClusters.push(cluster);
+      cumulativeDensity += cluster.reduce((s, c) => s + c.rawDensity, 0);
     }
 
     return topClusters.map((cluster, idx) => {
