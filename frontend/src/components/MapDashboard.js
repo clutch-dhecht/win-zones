@@ -206,11 +206,12 @@ const MapDashboard = ({ apiUrl }) => {
             <div className="w-3.5 h-3.5 rounded-full flex-shrink-0 bg-gradient-to-r from-orange-500 to-red-600" />
             <span className={`text-sm flex-1 font-medium ${winZonesMode ? 'text-red-700' : 'text-stone-400'}`}>Win Zones</span>
             <div onClick={(e) => e.stopPropagation()}>
-              <Switch checked={!!winZonesMode} onCheckedChange={(checked) => setWinZonesMode(checked ? 'coverage' : null)} className="scale-75" data-testid="win-zones-toggle" />
+              <Switch checked={!!winZonesMode} onCheckedChange={(checked) => setWinZonesMode(checked ? 'market' : null)} className="scale-75" data-testid="win-zones-toggle" />
             </div>
           </div>
           {winZonesMode && (
             <div className="ml-5 mt-1.5 flex items-center gap-1">
+              <button onClick={() => setWinZonesMode('market')} className={`text-[10px] px-2 py-1 rounded transition-colors ${winZonesMode === 'market' ? 'bg-stone-800 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'}`} data-testid="win-mode-market">Market</button>
               <button onClick={() => setWinZonesMode('coverage')} className={`text-[10px] px-2 py-1 rounded transition-colors ${winZonesMode === 'coverage' ? 'bg-green-700 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'}`} data-testid="win-mode-coverage">Coverage</button>
               <button onClick={() => setWinZonesMode('opportunity')} className={`text-[10px] px-2 py-1 rounded transition-colors ${winZonesMode === 'opportunity' ? 'bg-orange-600 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'}`} data-testid="win-mode-opportunity">Opportunity</button>
               <button
@@ -246,6 +247,7 @@ const MapDashboard = ({ apiUrl }) => {
           )}
           <p className="text-[10px] text-stone-400 ml-5 mt-1 leading-tight">
             {!winZonesMode && 'Strategic overlay for coverage & opportunity'}
+            {winZonesMode === 'market' && 'Where the biggest markets are'}
             {winZonesMode === 'coverage' && 'Where you ARE — your existing footprint'}
             {winZonesMode === 'opportunity' && 'Where you\'re NOT — highest density gaps'}
           </p>
@@ -256,7 +258,7 @@ const MapDashboard = ({ apiUrl }) => {
       {hasData && winZonesMode && enrichedFeatures.length > 0 && (
         <div className="px-4 py-3 border-b border-stone-100">
           <label className="text-[10px] tracking-[0.08em] uppercase font-semibold text-stone-400 block mb-2">
-            {winZonesMode === 'coverage' ? 'Top Coverage Zones' : 'Top Opportunity Zones'}
+            {winZonesMode === 'market' ? 'Top Market Zones' : winZonesMode === 'coverage' ? 'Top Coverage Zones' : 'Top Opportunity Zones'}
           </label>
           <WinZoneCards
             enrichedFeatures={enrichedFeatures}

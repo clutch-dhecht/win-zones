@@ -298,6 +298,8 @@ const MapboxVisualization = ({
 
       extraProps.win_score = densityScore * (1 - coverageScore);
       extraProps.coverage_strength = activeDensityTotal > 0 ? (densityScore * coverageScore) : 0;
+      extraProps.market_score = densityScore;
+      extraProps.coverage_pct = coverageScore;
       extraProps.nearest_point_miles = nearestDist === Infinity ? -1 : Math.round(nearestDist);
 
       return { ...feature, properties: { ...feature.properties, ...extraProps } };
@@ -311,8 +313,9 @@ const MapboxVisualization = ({
     if (!onWinZoneRankings || !enrichedCountiesGeoJSON) return;
     if (!winZonesEnabled || !hasDensityActive) { onWinZoneRankings([]); return; }
 
-    const isCoverage = winZonesEnabled === 'coverage';
-    const scoreKey = isCoverage ? 'coverage_strength' : 'win_score';
+    const scoreKey = winZonesEnabled === 'coverage' ? 'coverage_strength'
+      : winZonesEnabled === 'market' ? 'market_score'
+      : 'win_score';
 
     const ranked = enrichedCountiesGeoJSON.features
       .filter(f => f.properties[scoreKey] > 0.05 && f.properties.density_total > 0)
@@ -441,7 +444,8 @@ const MapboxVisualization = ({
       if (map) map.easeTo({ center: feature.geometry.coordinates, zoom: viewState.zoom + 2 });
     } else if ((feature.layer.id.startsWith('county-fill-') || feature.layer.id === 'win-zone-fill') && feature.properties.density_total > 0) {
       const isCov = winZonesEnabled === 'coverage';
-      const scoreProp = isCov ? feature.properties.coverage_strength : feature.properties.win_score;
+      const isMarket = winZonesEnabled === 'market';
+      const scoreProp = isCov ? feature.properties.coverage_strength : isMarket ? feature.properties.market_score : feature.properties.win_score;
       setPopupInfo({
         type: 'county',
         longitude: event.lngLat.lng, latitude: event.lngLat.lat,
@@ -449,6 +453,7 @@ const MapboxVisualization = ({
         total: feature.properties.density_total,
         layers: JSON.parse(feature.properties.density_layers || '{}'),
         winScore: scoreProp, winMode: winZonesEnabled || null,
+        coveragePct: feature.properties.coverage_pct,
         nearestMiles: feature.properties.nearest_point_miles >= 0 ? feature.properties.nearest_point_miles : null
       });
     }
@@ -476,7 +481,8 @@ const MapboxVisualization = ({
       const layers = JSON.parse(feature.properties.density_layers || '{}');
       const activeParts = Object.entries(layers).filter(([l]) => activeLayers[l]).map(([l, v]) => `${l}: ${v.toLocaleString()}`).join(' | ');
       const isCov = winZonesEnabled === 'coverage';
-      const scoreProp = isCov ? feature.properties.coverage_strength : feature.properties.win_score;
+      const isMarket = winZonesEnabled === 'market';
+      const scoreProp = isCov ? feature.properties.coverage_strength : isMarket ? feature.properties.market_score : feature.properties.win_score;
       const winPct = Math.round((scoreProp || 0) * 100);
       setHoverInfo({
         type: 'county', x: event.point.x, y: event.point.y,
@@ -567,8 +573,10 @@ const MapboxVisualization = ({
                 <Layer id="win-zone-fill" type="fill" paint={{
                   'fill-color': winZonesEnabled === 'coverage'
                     ? ['interpolate', ['linear'], ['coalesce', ['get', 'coverage_strength'], 0], 0, 'rgba(0,0,0,0)', 0.05, 'rgba(0,0,0,0)', 0.15, '#FEF9C3', 0.3, '#FDE047', 0.5, '#84CC16', 0.7, '#16A34A', 0.9, '#14532D']
+                    : winZonesEnabled === 'market'
+                    ? ['interpolate', ['linear'], ['coalesce', ['get', 'market_score'], 0], 0, 'rgba(0,0,0,0)', 0.05, 'rgba(0,0,0,0)', 0.15, '#E0E7FF', 0.3, '#818CF8', 0.5, '#6366F1', 0.7, '#4338CA', 0.9, '#312E81']
                     : ['interpolate', ['linear'], ['coalesce', ['get', 'win_score'], 0], 0, 'rgba(0,0,0,0)', 0.05, 'rgba(0,0,0,0)', 0.15, '#FEF3C7', 0.3, '#FBBF24', 0.5, '#F97316', 0.7, '#DC2626', 0.9, '#991B1B'],
-                  'fill-opacity': ['case', ['>', ['coalesce', ['get', winZonesEnabled === 'coverage' ? 'coverage_strength' : 'win_score'], 0], 0.05], 0.6, 0]
+                  'fill-opacity': ['case', ['>', ['coalesce', ['get', winZonesEnabled === 'coverage' ? 'coverage_strength' : winZonesEnabled === 'market' ? 'market_score' : 'win_score'], 0], 0.05], 0.6, 0]
                 }} />
               </Source>
             )}
@@ -712,10 +720,10 @@ const MapboxVisualization = ({
                             <span>Nearest point:</span><span className="font-medium">{popupInfo.nearestMiles} mi</span>
                           </div>
                           <div className="text-xs flex justify-between mt-0.5">
-                            <span className={`font-medium ${popupInfo.winMode === 'coverage' ? 'text-green-600' : 'text-orange-600'}`}>
-                              {popupInfo.winMode === 'coverage' ? 'Coverage:' : 'Opportunity:'}
+                            <span className={`font-medium ${popupInfo.winMode === 'coverage' ? 'text-green-600' : popupInfo.winMode === 'market' ? 'text-indigo-600' : 'text-orange-600'}`}>
+                              {popupInfo.winMode === 'coverage' ? 'Coverage:' : popupInfo.winMode === 'market' ? 'Market:' : 'Opportunity:'}
                             </span>
-                            <span className={`font-bold ${popupInfo.winMode === 'coverage' ? 'text-green-700' : 'text-orange-700'}`}>
+                            <span className={`font-bold ${popupInfo.winMode === 'coverage' ? 'text-green-700' : popupInfo.winMode === 'market' ? 'text-indigo-700' : 'text-orange-700'}`}>
                               {Math.round((popupInfo.winScore || 0) * 100)}%
                             </span>
                           </div>
@@ -743,8 +751,8 @@ const MapboxVisualization = ({
                   <div className="font-medium">{hoverInfo.county} Co., {hoverInfo.state}</div>
                   {hoverInfo.detail && <div className="opacity-80 mt-0.5">{hoverInfo.detail}</div>}
                   {hoverInfo.winScore != null && (
-                    <div className={`mt-0.5 ${hoverInfo.winMode === 'coverage' ? 'text-green-300' : 'text-orange-300'}`}>
-                      {hoverInfo.winMode === 'coverage' ? 'Cov' : 'Opp'}: {hoverInfo.winScore}% {hoverInfo.nearestMiles != null && `· ${hoverInfo.nearestMiles}mi`}
+                    <div className={`mt-0.5 ${hoverInfo.winMode === 'coverage' ? 'text-green-300' : hoverInfo.winMode === 'market' ? 'text-indigo-300' : 'text-orange-300'}`}>
+                      {hoverInfo.winMode === 'coverage' ? 'Cov' : hoverInfo.winMode === 'market' ? 'Mkt' : 'Opp'}: {hoverInfo.winScore}% {hoverInfo.nearestMiles != null && `· ${hoverInfo.nearestMiles}mi`}
                     </div>
                   )}
                 </div>
@@ -761,13 +769,15 @@ const MapboxVisualization = ({
           {winZonesEnabled && hasDensityActive && (
             <div className="absolute bottom-8 left-4 bg-white/95 backdrop-blur-sm border border-stone-200 rounded-lg px-3 py-2 shadow-md z-10" data-testid="win-zones-legend">
               <div className="text-[10px] font-semibold text-stone-600 uppercase tracking-wider mb-1.5">
-                {winZonesEnabled === 'coverage' ? 'Your Coverage' : 'Opportunity Score'}
+                {winZonesEnabled === 'coverage' ? 'Your Coverage' : winZonesEnabled === 'market' ? 'Market Density' : 'Opportunity Score'}
               </div>
               <div className="flex items-center gap-1">
                 <span className="text-[9px] text-stone-400">Low</span>
                 <div className="flex h-2.5 rounded-full overflow-hidden flex-1">
                   {winZonesEnabled === 'coverage' ? (
                     <><div className="flex-1 bg-yellow-100" /><div className="flex-1 bg-yellow-300" /><div className="flex-1 bg-lime-500" /><div className="flex-1 bg-green-600" /><div className="flex-1 bg-green-900" /></>
+                  ) : winZonesEnabled === 'market' ? (
+                    <><div className="flex-1 bg-indigo-100" /><div className="flex-1 bg-indigo-300" /><div className="flex-1 bg-indigo-500" /><div className="flex-1 bg-indigo-700" /><div className="flex-1 bg-indigo-900" /></>
                   ) : (
                     <><div className="flex-1 bg-amber-100" /><div className="flex-1 bg-amber-400" /><div className="flex-1 bg-orange-500" /><div className="flex-1 bg-red-600" /><div className="flex-1 bg-red-900" /></>
                   )}
@@ -775,7 +785,7 @@ const MapboxVisualization = ({
                 <span className="text-[9px] text-stone-400">High</span>
               </div>
               <div className="text-[9px] text-stone-400 mt-1">
-                {winZonesEnabled === 'coverage' ? 'Counties near your existing points' : 'High density + far from existing points'}
+                {winZonesEnabled === 'coverage' ? 'Counties near your existing points' : winZonesEnabled === 'market' ? 'Biggest markets regardless of presence' : 'High density + far from existing points'}
               </div>
             </div>
           )}

@@ -169,6 +169,7 @@ const WinZoneCards = ({
           county: f.properties.NAME,
           state: f.properties.state_name,
           score: f.properties[scoreKey],
+          coveragePct: f.properties.coverage_pct || 0,
           nearestMiles: f.properties.nearest_point_miles,
           densityLayers: JSON.parse(f.properties.density_layers || '{}'),
           lat: centroid ? centroid[1] : 0,
@@ -259,16 +260,22 @@ const WinZoneCards = ({
       const countyIds = cluster.map(c => c.id); // "State|COUNTY" IDs for map outlines
       const counties = cluster.map(c => `${c.county}, ${c.state}`);
 
+      // Average coverage across zone (0-1)
+      const avgCoverage = cluster.reduce((s, c) => s + c.coveragePct, 0) / cluster.length;
+      const coveragePctRound = Math.round(avgCoverage * 100);
+      const coverageLabel = coveragePctRound >= 60 ? 'Deepen' : coveragePctRound >= 25 ? 'Fill gaps' : 'Expand';
+
       return {
         id: idx,
         name,
         countyCount: cluster.length,
         score: Math.round(avgScore * 100),
         categorized,
-        nearestCLS,
         lat, lon, bbox,
         counties,
         countyIds,
+        coveragePct: coveragePctRound,
+        coverageLabel,
       };
     });
   }, [enrichedFeatures, activeLayers, winZonesMode, selectedStates, zoneFocus, locationData, pointData]);
@@ -286,11 +293,14 @@ const WinZoneCards = ({
     <div className="space-y-2" data-testid="win-zone-cards">
       {zones.map((zone, idx) => {
         const isExpanded = expandedZone === idx;
+        const isMarket = winZonesMode === 'market';
         const scoreColor = isCoverage
           ? (zone.score >= 70 ? 'text-green-700' : 'text-green-500')
+          : isMarket
+          ? (zone.score >= 70 ? 'text-indigo-700' : 'text-indigo-500')
           : (zone.score >= 70 ? 'text-red-600' : 'text-orange-500');
-        const bgColor = isCoverage ? 'border-green-200 bg-green-50/50' : 'border-orange-200 bg-orange-50/50';
-        const headerBg = isCoverage ? 'bg-green-100/50' : 'bg-orange-100/50';
+        const bgColor = isCoverage ? 'border-green-200 bg-green-50/50' : isMarket ? 'border-indigo-200 bg-indigo-50/50' : 'border-orange-200 bg-orange-50/50';
+        const headerBg = isCoverage ? 'bg-green-100/50' : isMarket ? 'bg-indigo-100/50' : 'bg-orange-100/50';
 
         return (
           <div key={idx} className={`rounded-lg border ${bgColor} overflow-hidden`} data-testid={`win-zone-card-${idx}`}>
@@ -302,7 +312,23 @@ const WinZoneCards = ({
               <span className={`text-sm font-bold ${scoreColor} mt-0.5`}>#{idx + 1}</span>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold text-stone-900 leading-tight">{zone.name}</div>
-                <div className="text-[10px] text-stone-400 mt-0.5">{zone.countyCount} counties · Score: {zone.score}%</div>
+                <div className="text-[10px] text-stone-400 mt-0.5">
+                  {zone.countyCount} counties{isMarket ? '' : ` · Score: ${zone.score}%`}
+                </div>
+                {/* Coverage bar — always show in market mode, optional in others */}
+                {isMarket && (
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <div className="flex-1 h-1.5 bg-stone-200 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${zone.coveragePct >= 60 ? 'bg-green-500' : zone.coveragePct >= 25 ? 'bg-amber-400' : 'bg-red-400'}`}
+                        style={{ width: `${Math.max(zone.coveragePct, 3)}%` }}
+                      />
+                    </div>
+                    <span className={`text-[9px] font-medium ${zone.coveragePct >= 60 ? 'text-green-600' : zone.coveragePct >= 25 ? 'text-amber-600' : 'text-red-500'}`}>
+                      {zone.coveragePct}% — {zone.coverageLabel}
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-1.5">
                 <button
