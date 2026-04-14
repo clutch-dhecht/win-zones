@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { ChevronDown, ChevronRight, Crosshair } from 'lucide-react';
+import { ChevronDown, ChevronRight, Crosshair, Eye, EyeOff } from 'lucide-react';
 
 // Layer categorization
 const LAYER_CATEGORIES = {
@@ -146,6 +146,8 @@ const WinZoneCards = ({
   onZonesComputed,
 }) => {
   const [expandedZone, setExpandedZone] = React.useState(null);
+  const [showAllZones, setShowAllZones] = React.useState(false);
+  const [zoneVisibility, setZoneVisibility] = React.useState({});
 
   const zones = useMemo(() => {
     if (!enrichedFeatures || enrichedFeatures.length === 0) return [];
@@ -210,20 +212,27 @@ const WinZoneCards = ({
         return totalB - totalA;
       });
 
-    const MIN_ZONE_SEPARATION = 350; // miles between zone centers — forces distinct regions
+    const MIN_ZONE_SEPARATION = 250; // miles between zone centers
+    const MAX_ZONES = 5;
+    const MARKET_COVERAGE_CAP = 0.5; // stop generating zones after 50% market captured
+
+    // Total market density across all candidates
+    const totalMarketDensity = candidates.reduce((s, c) => s + c.rawDensity, 0);
+
     const topClusters = [];
     const zoneCenters = [];
+    let cumulativeDensity = 0;
 
     for (const cluster of sortedClusters) {
-      if (topClusters.length >= 3) break;
+      if (topClusters.length >= MAX_ZONES) break;
+      // Stop if we've captured 50%+ of market (but always show at least 1)
+      if (topClusters.length >= 1 && totalMarketDensity > 0 && cumulativeDensity / totalMarketDensity >= MARKET_COVERAGE_CAP) break;
 
-      // Compute cluster center
       let cLat = 0, cLon = 0;
       cluster.forEach(c => { cLat += c.lat; cLon += c.lon; });
       cLat /= cluster.length;
       cLon /= cluster.length;
 
-      // Check distance from existing zone centers
       const tooClose = zoneCenters.some(([zLat, zLon]) =>
         quickDist(cLat, cLon, zLat, zLon) < MIN_ZONE_SEPARATION
       );
@@ -231,6 +240,7 @@ const WinZoneCards = ({
       if (!tooClose) {
         topClusters.push(cluster);
         zoneCenters.push([cLat, cLon]);
+        cumulativeDensity += cluster.reduce((s, c) => s + c.rawDensity, 0);
       }
     }
 
@@ -289,10 +299,10 @@ const WinZoneCards = ({
         if (cat !== 'cls') categorized[cat][layer] = count;
       });
 
-      const countyIds = cluster.map(c => c.id); // "State|COUNTY" IDs for map outlines
+      const countyIds = cluster.map(c => c.id);
       const counties = cluster.map(c => `${c.county}, ${c.state}`);
+      const zoneDensity = cluster.reduce((s, c) => s + c.rawDensity, 0);
 
-      // Average coverage across zone (0-1)
       const avgCoverage = cluster.reduce((s, c) => s + c.coveragePct, 0) / cluster.length;
       const coveragePctRound = Math.round(avgCoverage * 100);
       const coverageLabel = coveragePctRound >= 60 ? 'Deepen' : coveragePctRound >= 25 ? 'Fill gaps' : 'Expand';
@@ -308,23 +318,35 @@ const WinZoneCards = ({
         countyIds,
         coveragePct: coveragePctRound,
         coverageLabel,
+        zoneDensity,
+        marketPct: totalMarketDensity > 0 ? Math.round((zoneDensity / totalMarketDensity) * 100) : 0,
       };
     });
   }, [enrichedFeatures, activeLayers, winZonesMode, selectedStates, zoneFocus, locationData, pointData]);
 
-  // Emit zones for map outlines
+  // Emit zones for map outlines — only visible ones
   React.useEffect(() => {
-    if (onZonesComputed) onZonesComputed(zones);
-  }, [zones, onZonesComputed]);
+    if (onZonesComputed) {
+      const visibleZones = zones.filter((_, idx) => zoneVisibility[idx] !== false);
+      onZonesComputed(visibleZones);
+    }
+  }, [zones, zoneVisibility, onZonesComputed]);
 
   if (zones.length === 0) return null;
 
   const isCoverage = winZonesMode === 'coverage';
+  const visibleCount = showAllZones ? zones.length : Math.min(3, zones.length);
+  const hasMore = zones.length > 3;
+
+  // Cumulative market coverage
+  let cumPct = 0;
 
   return (
     <div className="space-y-2" data-testid="win-zone-cards">
-      {zones.map((zone, idx) => {
+      {zones.slice(0, visibleCount).map((zone, idx) => {
+        cumPct += zone.marketPct;
         const isExpanded = expandedZone === idx;
+        const isVisible = zoneVisibility[idx] !== false;
         const isMarket = winZonesMode === 'market';
         const scoreColor = isCoverage
           ? (zone.score >= 70 ? 'text-green-700' : 'text-green-500')
@@ -335,8 +357,8 @@ const WinZoneCards = ({
         const headerBg = isCoverage ? 'bg-green-100/50' : isMarket ? 'bg-indigo-100/50' : 'bg-orange-100/50';
 
         return (
-          <div key={idx} className={`rounded-lg border ${bgColor} overflow-hidden`} data-testid={`win-zone-card-${idx}`}>
-            {/* Header - always visible */}
+          <div key={idx} className={`rounded-lg border ${bgColor} overflow-hidden ${!isVisible ? 'opacity-40' : ''}`} data-testid={`win-zone-card-${idx}`}>
+            {/* Header */}
             <button
               onClick={() => setExpandedZone(isExpanded ? null : idx)}
               className={`w-full px-3 py-2.5 flex items-start gap-2 text-left ${headerBg}`}
@@ -345,9 +367,10 @@ const WinZoneCards = ({
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold text-stone-900 leading-tight">{zone.name}</div>
                 <div className="text-[10px] text-stone-400 mt-0.5">
-                  {zone.countyCount} counties{isMarket ? '' : ` · Score: ${zone.score}%`}
+                  {zone.countyCount} counties
+                  {isMarket && zone.marketPct > 0 ? ` · ${zone.marketPct}% of market` : ''}
+                  {!isMarket ? ` · Score: ${zone.score}%` : ''}
                 </div>
-                {/* Coverage bar — always show in market mode, optional in others */}
                 {isMarket && (
                   <div className="flex items-center gap-1.5 mt-1">
                     <div className="flex-1 h-1.5 bg-stone-200 rounded-full overflow-hidden">
@@ -362,7 +385,19 @@ const WinZoneCards = ({
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1">
+                {/* Visibility toggle */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setZoneVisibility(prev => ({ ...prev, [idx]: prev[idx] === false ? true : false }));
+                  }}
+                  className={`p-1 rounded transition-colors ${isVisible ? 'hover:bg-white/60 text-stone-500' : 'hover:bg-white/60 text-stone-300'}`}
+                  title={isVisible ? 'Hide on map' : 'Show on map'}
+                  data-testid={`zone-visibility-${idx}`}
+                >
+                  {isVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); onZoomToZone?.(zone); }}
                   className="p-1 rounded hover:bg-white/60 transition-colors"
@@ -378,7 +413,6 @@ const WinZoneCards = ({
             {/* Expanded content */}
             {isExpanded && (
               <div className="px-3 py-2 space-y-2">
-                {/* Market Size */}
                 {Object.keys(zone.categorized.market_size).length > 0 && (
                   <div>
                     <div className="text-[9px] uppercase tracking-wider font-semibold text-stone-400 mb-0.5">Market Size</div>
@@ -390,8 +424,6 @@ const WinZoneCards = ({
                     ))}
                   </div>
                 )}
-
-                {/* People to Reach */}
                 {Object.keys(zone.categorized.people).length > 0 && (
                   <div>
                     <div className="text-[9px] uppercase tracking-wider font-semibold text-stone-400 mb-0.5">People to Reach</div>
@@ -403,8 +435,6 @@ const WinZoneCards = ({
                     ))}
                   </div>
                 )}
-
-                {/* Partners / Distribution */}
                 {Object.keys(zone.categorized.partners).length > 0 && (
                   <div>
                     <div className="text-[9px] uppercase tracking-wider font-semibold text-stone-400 mb-0.5">Partners / Distribution</div>
@@ -416,8 +446,6 @@ const WinZoneCards = ({
                     ))}
                   </div>
                 )}
-
-                {/* County list */}
                 <div>
                   <div className="text-[9px] uppercase tracking-wider font-semibold text-stone-400 mb-0.5">Counties</div>
                   <div className="text-[10px] text-stone-500 leading-relaxed">
@@ -430,6 +458,24 @@ const WinZoneCards = ({
           </div>
         );
       })}
+
+      {/* Show all / Show less toggle */}
+      {hasMore && (
+        <button
+          onClick={() => setShowAllZones(v => !v)}
+          className="w-full text-center text-[10px] text-stone-400 hover:text-stone-600 py-1"
+          data-testid="show-all-zones"
+        >
+          {showAllZones ? `Show less` : `Show all ${zones.length} zones`}
+        </button>
+      )}
+
+      {/* Cumulative market coverage note */}
+      {winZonesMode === 'market' && cumPct > 0 && (
+        <div className="text-[9px] text-stone-400 text-center">
+          Zones 1-{visibleCount} cover {cumPct}% of active market
+        </div>
+      )}
     </div>
   );
 };
