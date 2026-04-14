@@ -164,19 +164,30 @@ const WinZoneCards = ({
       })
       .map(f => {
         const centroid = getSimpleCentroid(f.geometry);
+        // Sum raw active density for this county
+        const densityLayers = JSON.parse(f.properties.density_layers || '{}');
+        let rawTotal = 0;
+        Object.entries(densityLayers).forEach(([l, v]) => { if (activeLayers[l]) rawTotal += v; });
+
         return {
           id: `${f.properties.state_name}|${f.properties.NAME}`,
           county: f.properties.NAME,
           state: f.properties.state_name,
           score: f.properties[scoreKey],
+          rawDensity: rawTotal,
           coveragePct: f.properties.coverage_pct || 0,
           nearestMiles: f.properties.nearest_point_miles,
-          densityLayers: JSON.parse(f.properties.density_layers || '{}'),
+          densityLayers,
           lat: centroid ? centroid[1] : 0,
           lon: centroid ? centroid[0] : 0,
         };
       })
-      .sort((a, b) => b.score - a.score);
+      .sort((a, b) => {
+        // Market mode: seed from highest raw density counties
+        // Other modes: seed from highest score
+        if (winZonesMode === 'market') return b.rawDensity - a.rawDensity;
+        return b.score - a.score;
+      });
 
     // Zone focus controls merge distance and max size
     const FOCUS_SETTINGS = {
@@ -189,18 +200,39 @@ const WinZoneCards = ({
     // Cluster into contiguous zones
     const clusters = clusterCounties(candidates, maxSize, mergeDist);
 
-    // Build zone objects from top 3 clusters — prefer big, high-scoring zones
-    // Score clusters by: average score × log(county count) to balance size and quality
+    // Rank zones by total raw density — biggest markets win
+    // Enforce geographic diversity: Zone 2 must be 200mi+ from Zone 1, Zone 3 from both
     const sortedClusters = clusters
-      .filter(c => c.length >= 3) // Minimum 3 counties for a meaningful zone
+      .filter(c => c.length >= 3)
       .sort((a, b) => {
-        const avgA = a.reduce((s, c) => s + c.score, 0) / a.length;
-        const avgB = b.reduce((s, c) => s + c.score, 0) / b.length;
-        const rankA = avgA * Math.log(a.length + 1);
-        const rankB = avgB * Math.log(b.length + 1);
-        return rankB - rankA;
+        const totalA = a.reduce((s, c) => s + c.rawDensity, 0);
+        const totalB = b.reduce((s, c) => s + c.rawDensity, 0);
+        return totalB - totalA;
       });
-    const topClusters = sortedClusters.slice(0, 3);
+
+    const MIN_ZONE_SEPARATION = 350; // miles between zone centers — forces distinct regions
+    const topClusters = [];
+    const zoneCenters = [];
+
+    for (const cluster of sortedClusters) {
+      if (topClusters.length >= 3) break;
+
+      // Compute cluster center
+      let cLat = 0, cLon = 0;
+      cluster.forEach(c => { cLat += c.lat; cLon += c.lon; });
+      cLat /= cluster.length;
+      cLon /= cluster.length;
+
+      // Check distance from existing zone centers
+      const tooClose = zoneCenters.some(([zLat, zLon]) =>
+        quickDist(cLat, cLon, zLat, zLon) < MIN_ZONE_SEPARATION
+      );
+
+      if (!tooClose) {
+        topClusters.push(cluster);
+        zoneCenters.push([cLat, cLon]);
+      }
+    }
 
     return topClusters.map((cluster, idx) => {
       const { name, dominantState, lat, lon } = nameCluster(cluster);
