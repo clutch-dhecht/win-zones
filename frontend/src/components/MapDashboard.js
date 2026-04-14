@@ -11,7 +11,6 @@ import { toast } from 'sonner';
 import { getLayerConfig } from '../config/layerConfig';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
-import { Slider } from '@/components/ui/slider';
 
 const MapDashboard = ({ apiUrl }) => {
   const [pointData, setPointData] = useState([]);
@@ -26,12 +25,11 @@ const MapDashboard = ({ apiUrl }) => {
   const [enrichedFeatures, setEnrichedFeatures] = useState([]);
   const [winZones, setWinZones] = useState([]);
   const [selectedStates, setSelectedStates] = useState(null); // string[] | null
-  const [zoneSizeCap, setZoneSizeCap] = useState(50);
+  const [zoneFocus, setZoneFocus] = useState('regional'); // 'local' | 'regional' | 'territory'
   const [topZones, setTopZones] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [showZoneSlider, setShowZoneSlider] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const mapZoomRef = useRef(null);
 
@@ -214,34 +212,29 @@ const MapDashboard = ({ apiUrl }) => {
             <div className="ml-5 mt-1.5 flex items-center gap-1">
               <button onClick={() => setWinZonesMode('coverage')} className={`text-[10px] px-2 py-1 rounded transition-colors ${winZonesMode === 'coverage' ? 'bg-green-700 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'}`} data-testid="win-mode-coverage">Coverage</button>
               <button onClick={() => setWinZonesMode('opportunity')} className={`text-[10px] px-2 py-1 rounded transition-colors ${winZonesMode === 'opportunity' ? 'bg-orange-600 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'}`} data-testid="win-mode-opportunity">Opportunity</button>
-              <button
-                onClick={() => setShowZoneSlider(v => !v)}
-                className="text-[10px] text-stone-400 hover:text-stone-600 ml-auto"
-                data-testid="zone-size-toggle"
-              >
-                {showZoneSlider ? 'Hide' : 'Adjust'}
-              </button>
             </div>
           )}
-          {winZonesMode && showZoneSlider && (
-            <div className="ml-5 mt-2">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] text-stone-400">Zone Size</span>
-                <span className="text-[10px] font-medium text-stone-600">{zoneSizeCap} counties</span>
-              </div>
-              <Slider
-                value={[zoneSizeCap]}
-                onValueChange={([v]) => setZoneSizeCap(v)}
-                min={25}
-                max={100}
-                step={5}
-                className="w-full"
-                data-testid="zone-size-slider"
-              />
-              <div className="flex justify-between text-[9px] text-stone-300 mt-0.5">
-                <span>25</span>
-                <span>100</span>
-              </div>
+          {winZonesMode && (
+            <div className="ml-5 mt-2 flex items-center gap-1">
+              <span className="text-[10px] text-stone-400 mr-1">Focus:</span>
+              {[
+                { key: 'local', label: 'Local' },
+                { key: 'regional', label: 'Regional' },
+                { key: 'territory', label: 'Territory' },
+              ].map(opt => (
+                <button
+                  key={opt.key}
+                  onClick={() => setZoneFocus(opt.key)}
+                  className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
+                    zoneFocus === opt.key
+                      ? 'bg-stone-800 text-white'
+                      : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
+                  }`}
+                  data-testid={`zone-focus-${opt.key}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
           )}
           <p className="text-[10px] text-stone-400 ml-5 mt-1 leading-tight">
@@ -263,7 +256,7 @@ const MapDashboard = ({ apiUrl }) => {
             activeLayers={activeLayers}
             winZonesMode={winZonesMode}
             selectedStates={selectedStates}
-            zoneSizeCap={zoneSizeCap}
+            zoneFocus={zoneFocus}
             densityData={densityData}
             locationData={locationData}
             pointData={pointData}

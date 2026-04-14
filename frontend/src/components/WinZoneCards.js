@@ -35,14 +35,14 @@ const formatNum = (v) => {
 
 // Cluster adjacent high-scoring counties into contiguous zones
 // Uses grid-based spatial grouping: counties within ~75mi are merged
-const clusterCounties = (counties, maxSize = 50) => {
+const clusterCounties = (counties, maxSize = 50, mergeDist = 80) => {
   if (counties.length === 0) return [];
 
   // Sort by score descending
   const sorted = [...counties].sort((a, b) => b.score - a.score);
   const used = new Set();
   const clusters = [];
-  const MERGE_DIST = 80; // miles — merge counties within this distance for contiguous zones
+  const MERGE_DIST = mergeDist;
 
   for (const county of sorted) {
     if (used.has(county.id)) continue;
@@ -138,7 +138,7 @@ const WinZoneCards = ({
   activeLayers,
   winZonesMode,
   selectedStates,
-  zoneSizeCap = 50,
+  zoneFocus = 'regional',
   densityData,
   locationData,
   pointData,
@@ -177,8 +177,16 @@ const WinZoneCards = ({
       })
       .sort((a, b) => b.score - a.score);
 
+    // Zone focus controls merge distance and max size
+    const FOCUS_SETTINGS = {
+      local:     { mergeDist: 30, maxSize: 15 },
+      regional:  { mergeDist: 80, maxSize: 50 },
+      territory: { mergeDist: 130, maxSize: 100 },
+    };
+    const { mergeDist, maxSize } = FOCUS_SETTINGS[zoneFocus] || FOCUS_SETTINGS.regional;
+
     // Cluster into contiguous zones
-    const clusters = clusterCounties(candidates, zoneSizeCap);
+    const clusters = clusterCounties(candidates, maxSize, mergeDist);
 
     // Build zone objects from top 3 clusters — prefer big, high-scoring zones
     // Score clusters by: average score × log(county count) to balance size and quality
@@ -263,7 +271,7 @@ const WinZoneCards = ({
         countyIds,
       };
     });
-  }, [enrichedFeatures, activeLayers, winZonesMode, selectedStates, zoneSizeCap, locationData, pointData]);
+  }, [enrichedFeatures, activeLayers, winZonesMode, selectedStates, zoneFocus, locationData, pointData]);
 
   // Emit zones for map outlines
   React.useEffect(() => {
