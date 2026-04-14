@@ -212,7 +212,7 @@ const WinZoneCards = ({
         return totalB - totalA;
       });
 
-    const MIN_ZONE_SEPARATION = 250; // miles between zone centers
+    const MIN_ZONE_SEPARATION = 0; // no forced separation — market density drives ranking
     const MAX_ZONES = 5;
     const MARKET_COVERAGE_CAP = 0.5; // stop generating zones after 50% market captured
 
