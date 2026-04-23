@@ -433,9 +433,9 @@ const WinZoneCards = ({
         return (
           <div key={idx} className={`rounded-lg border ${bgColor} overflow-hidden ${!isVisible ? 'opacity-40' : ''}`} data-testid={`win-zone-card-${idx}`}>
             {/* Header */}
-            <button
+            <div
               onClick={() => setExpandedZone(isExpanded ? null : idx)}
-              className={`w-full px-3 py-2.5 flex items-start gap-2 text-left ${headerBg}`}
+              className={`w-full px-3 py-2.5 flex items-start gap-2 text-left cursor-pointer ${headerBg}`}
             >
               <span className={`text-sm font-bold ${scoreColor} mt-0.5`}>#{idx + 1}</span>
               <div className="flex-1 min-w-0">
@@ -482,7 +482,7 @@ const WinZoneCards = ({
                 </button>
                 {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-stone-400" /> : <ChevronRight className="w-3.5 h-3.5 text-stone-400" />}
               </div>
-            </button>
+            </div>
 
             {/* Expanded content */}
             {isExpanded && (

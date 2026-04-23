@@ -14,40 +14,42 @@ Interactive map visualization app for sales territory mapping. Market-focused UX
 - [x] State filter dropdown (filters all data + zooms map)
 - [x] Layer stats summary (auto-totals per active layer)
 - [x] Per-layer density choropleth with FIPS normalization (99.1% match)
-- [x] Individual location points (36k+ other + 1,047 CLS) with clustering
-- [x] CLS Customers: 1,047 individual records with Customer Name + Ship To Name (from XLSX import)
-  - Popup shows Ship To Name (bold), Customer Name, layer label, City/State
+- [x] Individual location points (36k+ other + 1,047 CLS + 1,898 new industry) with clustering
+- [x] CLS Customers: 1,047 individual records with Customer Name + Ship To Name
 - [x] Geographic radius circles (@turf/circle)
 - [x] Win Zones: Coverage, Opportunity, and Market modes
-- [x] State-seeded clustering algorithm (ranks states by total density, seeds zones from top states)
-- [x] Win Zone Cards: Top 5 clustered zones, 3 shown by default, zones 4-5 hidden on map
-  - Market Size / People to Reach / Partners-Distribution
-  - View on Map zoom, county list, nearest CLS customer
-  - Eye toggle for map outline visibility per zone
-- [x] Zone Focus: Local (40mi/25 counties), Regional (100mi/75), Territory (150mi/150)
-- [x] Market Coverage Cap: 85% ensures 3+ meaningful zones
-- [x] Market mode uses market_score (pure density) — avoids penalizing well-covered areas
-- [x] Layer color picker, hover tooltips, click popups
+- [x] State-seeded clustering algorithm
+- [x] Win Zone Cards: Top 5 zones, 3 shown by default, zones 4-5 hidden on map
+- [x] Zone Focus: Local / Regional / Territory
+- [x] Layer color picker, hover tooltips, click popups with extra fields (capacity, type, commodity)
 - [x] Mobile responsive (slide-over panel)
 - [x] US state + Canadian province border lines
-- [x] Data upload: CSV and XLSX support with auto-column rename and CLS format detection
-- [x] Density uploads merge across files
-- [x] XLSX upload support for CLS Customer format (Customer Name, Ship To Name, City, State)
+- [x] Data upload: CSV and XLSX support
+- [x] **Grain Fumigation** layer (59 points) — single toggleable layer
+- [x] **FSS Milling** group with sub-filter by Category:
+  - FSS Grain (1,019) | FSS Flour Mills (161) | FSS Specialty Mills (372) | FSS Mix Plants (81)
+  - Collapsible group with master toggle + individual sub-toggles
+- [x] **Grain Terminals** group with sub-filter by Commodity:
+  - Terminals SRW Wheat (61) | HRW Wheat (17) | HRS Wheat (8) | Corn & Soybean (25) | Rough Rice (21) | Oats (6) | Soybean Oil (35) | Soybean Meal (33)
+  - Collapsible group with master toggle + individual sub-toggles
+- [x] Industry Layers section in Advanced Data Layers panel
 
 ## Data Collections
-- **location_points**: Individual markers (Grain Elevators, Feed Manufacturers, Feed Stores, Pest Control, CLS Customers)
-  - CLS Customers have extra fields: `customer_name`, `ship_to_name`
-- **density_data**: County-level choropleth (Wheat/Corn/Rice Acres, Growers, Hogs, Farms with Grain Storage)
-- **point_data**: Legacy aggregated city data (currently empty after CLS migration to location_points)
+- **location_points**: Individual markers
+  - Point Layers: Grain Elevators, Feed Manufacturers, Feed Stores, Pest Control, CLS Customers
+  - Industry: Grain Fumigation, FSS Grain/Flour/Specialty/Mix, Terminals by commodity
+- **density_data**: County-level choropleth
+- **point_data**: Legacy (currently empty)
 
-## Layer Categories
+## Layer Categories (Win Zones)
 - **Market Size**: Wheat/Corn/Rice Acres, 1000+ Hogs
-- **People to Reach**: 1000+ Growers (all types), Farms with Grain Storage, Pest Control
-- **Partners/Distribution**: Grain Elevators, Feed Manufacturers, Feed Stores
-- **CLS**: CLS Customers (manual-only, advanced panel)
+- **People to Reach**: 1000+ Growers, Farms with Grain Storage, Pest Control
+- **Partners/Distribution**: Grain Elevators, Feed Manufacturers, Feed Stores, Grain Fumigation, all FSS layers, all Terminal layers
+- **CLS**: CLS Customers
 
 ## P1 - Upcoming
-- Backend spatial filtering (`bbox` query params) for viewport-only data (100k+ scaling)
+- Adjust Market View presets to include new layers (user requested for later)
+- Backend spatial filtering for viewport-only data (100k+ scaling)
 - Address-level geocoding for CSVs without lat/lon
 
 ## P2 - Future/Backlog
