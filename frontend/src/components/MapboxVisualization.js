@@ -81,6 +81,7 @@ const MapboxVisualization = ({
   layerColors = {},
   winZonesEnabled = false,
   winZones = [],
+  weightedWinZones = [],
   onWinZoneRankings,
   onEnrichedFeatures,
   onMapZoom,
@@ -419,6 +420,24 @@ const MapboxVisualization = ({
     return features.length > 0 ? { type: 'FeatureCollection', features } : null;
   }, [winZones, enrichedCountiesGeoJSON]);
 
+  // Build weighted zone outline GeoJSON
+  const weightedZoneOutlinesGeoJSON = useMemo(() => {
+    if (!weightedWinZones || weightedWinZones.length === 0 || !enrichedCountiesGeoJSON) return null;
+    const features = [];
+    const COLORS = ['#0891B2', '#06B6D4', '#67E8F9']; // cyan shades
+    weightedWinZones.forEach((zone, zoneIdx) => {
+      if (!zone.countyIds) return;
+      const idSet = new Set(zone.countyIds);
+      enrichedCountiesGeoJSON.features.forEach(f => {
+        const key = `${f.properties.state_name}|${f.properties.NAME}`;
+        if (idSet.has(key)) {
+          features.push({ ...f, properties: { ...f.properties, zone_index: zoneIdx, zone_color: COLORS[zoneIdx] || '#67E8F9' } });
+        }
+      });
+    });
+    return features.length > 0 ? { type: 'FeatureCollection', features } : null;
+  }, [weightedWinZones, enrichedCountiesGeoJSON]);
+
 
   // Click handler
   const onMapClick = useCallback((event) => {
@@ -623,6 +642,36 @@ const MapboxVisualization = ({
                     'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1, 6, 2, 10, 2.5],
                     'line-opacity': 1,
                     'line-dasharray': [3, 2]
+                  }}
+                />
+              </Source>
+            )}
+
+            {/* Weighted Win Zone outlines — cyan borders */}
+            {weightedZoneOutlinesGeoJSON && (
+              <Source id="weighted-zone-outlines" type="geojson" data={weightedZoneOutlinesGeoJSON}>
+                <Layer
+                  id="weighted-zone-fill"
+                  type="fill"
+                  paint={{ 'fill-color': ['get', 'zone_color'], 'fill-opacity': 0.12 }}
+                />
+                <Layer
+                  id="weighted-zone-border"
+                  type="line"
+                  paint={{
+                    'line-color': '#0E7490',
+                    'line-width': ['interpolate', ['linear'], ['zoom'], 3, 2, 6, 3.5, 10, 4.5],
+                    'line-opacity': 0.85
+                  }}
+                />
+                <Layer
+                  id="weighted-zone-border-inner"
+                  type="line"
+                  paint={{
+                    'line-color': ['get', 'zone_color'],
+                    'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1, 6, 1.5, 10, 2],
+                    'line-opacity': 1,
+                    'line-dasharray': [2, 3]
                   }}
                 />
               </Source>

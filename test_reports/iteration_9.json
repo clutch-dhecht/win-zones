@@ -1,0 +1,118 @@
+{
+  "summary": "Completed comprehensive frontend testing of new Weighted Win Zones feature. All 14 features tested - 14 passed. The 3-factor model (Opportunity + Access + Efficiency) works correctly with weight sliders and editable efficiency constants. Zone cards show score breakdown, Top 10 counties expand correctly, and cyan outlines render on map. Both Win Zones and Weighted Win Zones can operate simultaneously with different colored outlines.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Weighted Win Zones toggle ON/OFF works independently from existing Win Zones - PASS",
+    "Both Win Zones and Weighted Win Zones can be enabled simultaneously with different colored outlines (red/orange vs cyan) - PASS",
+    "Weighted zone cards show score breakdown (Opp/Acc/Eff percentages) - PASS",
+    "Expanding a weighted zone card shows Top 10 counties with per-county layer counts - PASS",
+    "Advanced Settings panel opens/closes and shows weight sliders + efficiency constants - PASS",
+    "Weight sliders are adjustable (0-100%) - PASS (tested Opportunity slider from 40% to 60%)",
+    "Efficiency constants (Required Growers, Impressions) are editable - PASS (Wheat defaults: 137, 915)",
+    "Switching market views (Wheat→Corn→Rice) recalculates weighted zones - PASS (different zones for each market)",
+    "Hogs market view shows weighted zones (gracefully degraded without efficiency) - PASS (no Eff shown)",
+    "Pest Control market view shows weighted zones - PASS (no Eff shown)",
+    "Zone visibility eye toggle works on weighted zone cards - PASS (card dims when hidden)",
+    "Zoom to zone crosshair works on weighted zone cards - PASS (map zooms to zone bbox)",
+    "Show all 5 zones / Show less toggle works - PASS",
+    "Existing Win Zones still work correctly (no regression) - PASS (Market/Coverage/Opportunity modes all work)"
+  ],
+  "test_report_links": [
+    "/app/test_reports/iteration_9.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend only testing)",
+    "frontend": "100% (14/14 tests passed)"
+  },
+  "test_credentials": "No authentication required. Mapbox token configured in frontend/.env",
+  "seed_data_creation": "No new seed data created - using existing data",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Weighted Win Zones feature fully implemented and tested. Key data-testids: weighted-win-toggle, weighted-settings-toggle, weighted-zone-card-{0-4}, weighted-zone-visibility-{0-4}, weighted-zoom-zone-{0-4}, weighted-show-all-zones, weight-slider-{opportunity|access|efficiency}, efficiency-{requiredGrowers|impressions}. Existing Win Zones use: win-zones-toggle, win-zone-card-{0-4}, zone-visibility-{0-4}, zoom-zone-{0-4}. Cyan outlines for weighted zones, red/orange for existing zones.",
+  "features_verified": {
+    "weighted_win_toggle": {
+      "status": "PASS",
+      "details": "Toggle works independently, shows 'Opportunity + Access + Efficiency model' text with market name"
+    },
+    "both_zones_simultaneous": {
+      "status": "PASS",
+      "details": "Both Win Zones (purple/blue overlay) and Weighted Win Zones (cyan outlines) can be enabled together"
+    },
+    "score_breakdown": {
+      "status": "PASS",
+      "details": "Zone cards show Opp/Acc/Eff percentages with colored bar visualization"
+    },
+    "top_10_counties": {
+      "status": "PASS",
+      "details": "Expanding card shows Top 10 Counties with layer breakdown (e.g., De Witt, Illinois: 88 with Grain Elevators: 59, CLS Customer Head Sheds: 7, etc.)"
+    },
+    "advanced_settings": {
+      "status": "PASS",
+      "details": "Opens/closes with 'Advanced settings' / 'Hide settings' toggle"
+    },
+    "weight_sliders": {
+      "status": "PASS",
+      "details": "Three sliders (Opportunity, Access, Efficiency) adjustable 0-100%, default 40/40/20"
+    },
+    "efficiency_constants": {
+      "status": "PASS",
+      "details": "Required Growers and Impressions inputs editable, shows market-specific defaults (Wheat: 137/915, Corn: 16/108, Rice: 23/150)"
+    },
+    "market_switching": {
+      "status": "PASS",
+      "details": "Zones recalculate when switching markets - Wheat: Central Illinois #1, Corn: North Illinois #1, Rice: Central Illinois #1"
+    },
+    "hogs_market": {
+      "status": "PASS",
+      "details": "Shows weighted zones without Efficiency component (gracefully degraded) - Central Indiana #1"
+    },
+    "pest_control_market": {
+      "status": "PASS",
+      "details": "Shows weighted zones without Efficiency component - Central New York #1"
+    },
+    "visibility_toggle": {
+      "status": "PASS",
+      "details": "Eye icon toggles zone visibility, card dims (opacity-40) when hidden"
+    },
+    "zoom_to_zone": {
+      "status": "PASS",
+      "details": "Crosshair icon zooms map to zone bounding box"
+    },
+    "show_all_zones": {
+      "status": "PASS",
+      "details": "'Show all 5 zones' / 'Show less' toggle works correctly"
+    },
+    "existing_win_zones_regression": {
+      "status": "PASS",
+      "details": "Market/Coverage/Opportunity modes all work, zone cards display correctly"
+    }
+  },
+  "zone_examples": {
+    "wheat": {
+      "zone_1": "Central Illinois - 75 counties, Score: 15%, Opp 1%, Acc 21%, Eff 32%",
+      "zone_2": "Central Minnesota - 75 counties, Score: 13%",
+      "zone_3": "East Kansas - 75 counties, Score: 12%"
+    },
+    "corn": {
+      "zone_1": "North Illinois - 75 counties, Score: 29%, Opp 33%, Acc 23%, Eff 32%",
+      "zone_2": "South Iowa - 75 counties, Score: 24%",
+      "zone_3": "East Kentucky / Illinois - 75 counties, Score: 23%"
+    },
+    "hogs": {
+      "zone_1": "Central Indiana - 75 counties, Score: 11%, Opp 2%, Acc 19% (no Eff)",
+      "zone_2": "Central Texas - 75 counties, Score: 10%",
+      "zone_3": "East Kentucky - 75 counties, Score: 10%"
+    }
+  }
+}

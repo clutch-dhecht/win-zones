@@ -7,9 +7,10 @@ import MarketViews, { getMarketPreset, detectActiveMarket } from './MarketViews'
 import LayerStats from './LayerStats';
 import StateFilter from './StateFilter';
 import WinZoneCards from './WinZoneCards';
+import WeightedWinZones from './WeightedWinZones';
 import { toast } from 'sonner';
 import { getLayerConfig } from '../config/layerConfig';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Settings2 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 
 const MapDashboard = ({ apiUrl }) => {
@@ -24,6 +25,13 @@ const MapDashboard = ({ apiUrl }) => {
   const [winZoneRankings, setWinZoneRankings] = useState([]);
   const [enrichedFeatures, setEnrichedFeatures] = useState([]);
   const [winZones, setWinZones] = useState([]);
+  const [weightedWinEnabled, setWeightedWinEnabled] = useState(false);
+  const [weightedWinZones, setWeightedWinZones] = useState([]);
+  const [weightedSettings, setWeightedSettings] = useState({
+    weights: { opportunity: 0.4, access: 0.4, efficiency: 0.2 },
+    constants: {},
+  });
+  const [showWeightedSettings, setShowWeightedSettings] = useState(false);
   const [selectedStates, setSelectedStates] = useState(null); // string[] | null
   const [zoneFocus, setZoneFocus] = useState('regional'); // 'local' | 'regional' | 'territory'
   const [topZones, setTopZones] = useState([]);
@@ -275,6 +283,112 @@ const MapDashboard = ({ apiUrl }) => {
         </div>
       )}
 
+      {/* Weighted Win Zones */}
+      {hasData && densityData.length > 0 && (
+        <div className="px-4 py-3 border-b border-stone-100">
+          <div className="flex items-center gap-2">
+            <div className="w-3.5 h-3.5 rounded-full flex-shrink-0 bg-gradient-to-r from-cyan-500 to-blue-600" />
+            <span className={`text-sm flex-1 font-medium ${weightedWinEnabled ? 'text-cyan-700' : 'text-stone-400'}`}>Weighted Win Zones</span>
+            <div onClick={(e) => e.stopPropagation()}>
+              <Switch checked={weightedWinEnabled} onCheckedChange={setWeightedWinEnabled} className="scale-75" data-testid="weighted-win-toggle" />
+            </div>
+          </div>
+          {weightedWinEnabled && (
+            <>
+              <p className="text-[10px] text-stone-400 ml-5 mt-1 leading-tight">
+                Opportunity + Access + Efficiency model
+                {activeMarket && activeMarket !== 'custom' && <span className="text-cyan-500 ml-1">({activeMarket})</span>}
+              </p>
+              <button
+                onClick={() => setShowWeightedSettings(v => !v)}
+                className="text-[10px] text-stone-400 hover:text-stone-600 ml-5 mt-1 flex items-center gap-1"
+                data-testid="weighted-settings-toggle"
+              >
+                <Settings2 className="w-3 h-3" />
+                {showWeightedSettings ? 'Hide settings' : 'Advanced settings'}
+              </button>
+            </>
+          )}
+          {weightedWinEnabled && showWeightedSettings && (
+            <div className="ml-5 mt-2 p-2 bg-stone-50 rounded-lg border border-stone-100 space-y-2">
+              <div className="text-[9px] uppercase tracking-wider font-semibold text-stone-400">Weights</div>
+              {[
+                { key: 'opportunity', label: 'Opportunity', color: 'amber' },
+                { key: 'access', label: 'Access', color: 'cyan' },
+                { key: 'efficiency', label: 'Efficiency', color: 'emerald' },
+              ].map(({ key, label, color }) => (
+                <div key={key} className="flex items-center gap-2">
+                  <span className={`text-[10px] text-${color}-600 w-16`}>{label}</span>
+                  <input
+                    type="range" min="0" max="100" step="5"
+                    value={Math.round((weightedSettings.weights[key] || 0) * 100)}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value) / 100;
+                      setWeightedSettings(prev => ({
+                        ...prev,
+                        weights: { ...prev.weights, [key]: val }
+                      }));
+                    }}
+                    className="flex-1 h-1 accent-stone-600"
+                    data-testid={`weight-slider-${key}`}
+                  />
+                  <span className="text-[10px] text-stone-500 w-8 text-right">{Math.round((weightedSettings.weights[key] || 0) * 100)}%</span>
+                </div>
+              ))}
+              {['wheat', 'corn', 'rice'].includes(activeMarket) && (
+                <>
+                  <div className="text-[9px] uppercase tracking-wider font-semibold text-stone-400 pt-1">Efficiency Constants ({activeMarket})</div>
+                  {[
+                    { key: 'requiredGrowers', label: 'Required Growers', defaults: { wheat: 137, corn: 16, rice: 23 } },
+                    { key: 'impressions', label: 'Impressions', defaults: { wheat: 915, corn: 108, rice: 150 } },
+                  ].map(({ key, label, defaults }) => (
+                    <div key={key} className="flex items-center gap-2">
+                      <span className="text-[10px] text-stone-500 w-24">{label}</span>
+                      <input
+                        type="number"
+                        value={weightedSettings.constants[activeMarket]?.[key] ?? defaults[activeMarket] ?? ''}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 0;
+                          setWeightedSettings(prev => ({
+                            ...prev,
+                            constants: {
+                              ...prev.constants,
+                              [activeMarket]: { ...prev.constants[activeMarket], [key]: val }
+                            }
+                          }));
+                        }}
+                        className="flex-1 text-[10px] px-2 py-0.5 border border-stone-200 rounded bg-white text-stone-700 w-16"
+                        data-testid={`efficiency-${key}`}
+                      />
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Weighted Win Zone Cards */}
+      {hasData && weightedWinEnabled && enrichedFeatures.length > 0 && (
+        <div className="px-4 py-3 border-b border-stone-100">
+          <label className="text-[10px] tracking-[0.08em] uppercase font-semibold text-stone-400 block mb-2">
+            Weighted Zones {activeMarket && activeMarket !== 'custom' ? `(${activeMarket})` : ''}
+          </label>
+          <WeightedWinZones
+            enrichedFeatures={enrichedFeatures}
+            activeMarket={activeMarket}
+            selectedStates={selectedStates}
+            zoneFocus={zoneFocus}
+            locationData={locationData}
+            modelWeights={weightedSettings.weights}
+            efficiencyConstants={weightedSettings.constants}
+            onZoomToZone={handleZoomToZone}
+            onZonesComputed={setWeightedWinZones}
+          />
+        </div>
+      )}
+
       {/* Data Layers (Advanced) */}
       {hasData && (
         <div className="border-b border-stone-100">
@@ -343,6 +457,7 @@ const MapDashboard = ({ apiUrl }) => {
             layerColors={layerColors}
             winZonesEnabled={winZonesMode}
             winZones={winZones}
+            weightedWinZones={weightedWinEnabled ? weightedWinZones : []}
             onWinZoneRankings={setWinZoneRankings}
             onEnrichedFeatures={setEnrichedFeatures}
             onMapZoom={(fn) => { mapZoomRef.current = fn; }}
