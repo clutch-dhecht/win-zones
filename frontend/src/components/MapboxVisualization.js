@@ -771,11 +771,6 @@ const MapboxVisualization = ({
                 <div>
                   <div className="font-medium">{hoverInfo.county} Co., {hoverInfo.state}</div>
                   {hoverInfo.detail && <div className="opacity-80 mt-0.5">{hoverInfo.detail}</div>}
-                  {hoverInfo.winScore != null && (
-                    <div className={`mt-0.5 ${hoverInfo.winMode === 'coverage' ? 'text-green-300' : hoverInfo.winMode === 'market' ? 'text-indigo-300' : 'text-orange-300'}`}>
-                      {hoverInfo.winMode === 'coverage' ? 'Cov' : hoverInfo.winMode === 'market' ? 'Mkt' : 'Opp'}: {hoverInfo.winScore}% {hoverInfo.nearestMiles != null && `· ${hoverInfo.nearestMiles}mi`}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
