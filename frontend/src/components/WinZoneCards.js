@@ -364,14 +364,14 @@ const WinZoneCards = ({
       const counties = cluster.map(c => `${c.county}, ${c.state}`);
       const zoneDensity = cluster.reduce((s, c) => s + c.rawDensity, 0);
 
-      // Top 10 counties by raw density with per-county layer breakdowns
+      // Top 10 counties by raw density with per-county people-to-reach layers
       const topCounties = [...cluster]
         .sort((a, b) => b.rawDensity - a.rawDensity)
         .slice(0, 10)
         .map(c => {
           const layers = {};
           Object.entries(c.densityLayers).forEach(([l, v]) => {
-            if (activeLayers[l] && v > 0) layers[l] = v;
+            if (activeLayers[l] && v > 0 && LAYER_CATEGORIES[l] === 'people') layers[l] = v;
           });
           return {
             name: `${c.county}, ${c.state}`,
