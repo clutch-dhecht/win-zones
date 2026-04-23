@@ -215,8 +215,8 @@ const WinZoneCards = ({
     // Zone focus controls merge distance and max size
     const FOCUS_SETTINGS = {
       local:     { mergeDist: 40, maxSize: 25 },
-      regional:  { mergeDist: 100, maxSize: 75 },
-      territory: { mergeDist: 150, maxSize: 150 },
+      regional:  { mergeDist: 100, maxSize: 60 },
+      territory: { mergeDist: 150, maxSize: 100 },
     };
     const { mergeDist, maxSize } = FOCUS_SETTINGS[zoneFocus] || FOCUS_SETTINGS.regional;
 
@@ -234,11 +234,14 @@ const WinZoneCards = ({
       .map(([state]) => state);
 
     // 2. For each top state, seed a zone from its highest-density county
-    //    Expand outward using merge distance (can cross state lines)
+    //    Each state seeds at most one zone; expansion can cross state lines
     const used = new Set();
+    const seededStates = new Set();
     const allClusters = [];
 
     for (const state of rankedStates) {
+      if (seededStates.has(state)) continue;
+
       const stateCounties = stateGroups[state].counties
         .filter(c => !used.has(c.id))
         .sort((a, b) => b.rawDensity - a.rawDensity);
@@ -251,14 +254,18 @@ const WinZoneCards = ({
 
       const cluster = [seed];
       used.add(seed.id);
+      seededStates.add(state);
 
       // Expand: grab nearby candidates (any state) within merge distance
+      // But don't expand into states already well-represented by previous zones
       let changed = true;
       while (changed && cluster.length < maxSize) {
         changed = false;
         for (const candidate of candidates) {
           if (used.has(candidate.id)) continue;
           if (cluster.length >= maxSize) break;
+          // Skip candidates from states that already seeded a zone (unless same state as seed)
+          if (candidate.state !== state && seededStates.has(candidate.state)) continue;
           for (const member of cluster) {
             const dist = quickDist(member.lat, member.lon, candidate.lat, candidate.lon);
             if (dist < mergeDist) {

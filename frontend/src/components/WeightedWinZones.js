@@ -229,8 +229,8 @@ const WeightedWinZones = ({
     // ── Cluster (same state-seeded method) ──
     const FOCUS_SETTINGS = {
       local: { mergeDist: 40, maxSize: 25 },
-      regional: { mergeDist: 100, maxSize: 75 },
-      territory: { mergeDist: 150, maxSize: 150 },
+      regional: { mergeDist: 100, maxSize: 60 },
+      territory: { mergeDist: 150, maxSize: 100 },
     };
     const { mergeDist, maxSize } = FOCUS_SETTINGS[zoneFocus] || FOCUS_SETTINGS.regional;
 
