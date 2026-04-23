@@ -52,7 +52,7 @@ const MARKET_PRESETS = {
     layers: [
       'Terminals Corn & Soybean', 'Terminals Soybean Oil', 'Terminals Soybean Meal',
       'CLS Customer Head Sheds', 'Feed Manufacturers',
-      '1000+ Corn Growers', 'Corn Acres', '1000+ Hogs',
+      'Corn Acres', '1000+ Hogs',
     ],
   },
   pest: {
