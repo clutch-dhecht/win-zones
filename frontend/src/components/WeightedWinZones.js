@@ -51,7 +51,7 @@ const DEFAULT_CONSTANTS = {
   rice:  { requiredGrowers: 23,  impressions: 150 },
 };
 
-const DEFAULT_WEIGHTS = { opportunity: 0.4, access: 0.4, efficiency: 0.2 };
+const DEFAULT_WEIGHTS = { opportunity: 0.6, access: 0.3, efficiency: 0.1 };
 
 // ─── HELPERS ───────────────────────────────────────────────────
 
@@ -154,7 +154,7 @@ const WeightedWinZones = ({
         (locationData || []).forEach(loc => {
           if (!accessLayers.includes(loc.layer)) return;
           const d = quickDist(lat, lon, loc.lat, loc.lon);
-          if (d < 30) {
+          if (d < 20) {
             const w = LAYER_WEIGHTS[loc.layer] || 1;
             accessRaw += w;
             layerCounts[loc.layer] = (layerCounts[loc.layer] || 0) + 1;

@@ -28,7 +28,7 @@ const MapDashboard = ({ apiUrl }) => {
   const [weightedWinEnabled, setWeightedWinEnabled] = useState(false);
   const [weightedWinZones, setWeightedWinZones] = useState([]);
   const [weightedSettings, setWeightedSettings] = useState({
-    weights: { opportunity: 0.4, access: 0.4, efficiency: 0.2 },
+    weights: { opportunity: 0.6, access: 0.3, efficiency: 0.1 },
     constants: {},
   });
   const [showWeightedSettings, setShowWeightedSettings] = useState(false);
