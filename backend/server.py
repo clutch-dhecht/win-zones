@@ -43,7 +43,8 @@ COLUMN_RENAME_MAP = {
 
 # Layer rename map: old name -> new name (for migrating existing data)
 LAYER_RENAME_MAP = {
-    'Customers': 'CLS Customers',
+    'Customers': 'CLS Customer Head Sheds',
+    'CLS Customers': 'CLS Customer Head Sheds',
     '1000-plus Acre Growers': '1000+ Wheat Growers',
     'Acres': 'Wheat Acres',
 }
@@ -153,7 +154,7 @@ async def upload_point_data(file: UploadFile = File(...)):
             if not city_col or not state_col:
                 raise HTTPException(status_code=400, detail="CLS format requires City and State columns")
 
-            layer_name = 'CLS Customers'
+            layer_name = 'CLS Customer Head Sheds'
             points = []
             skipped_count = 0
 
@@ -190,10 +191,10 @@ async def upload_point_data(file: UploadFile = File(...)):
                 await db.location_points.insert_many(points)
 
             # Also remove CLS from point_data (legacy aggregated)
-            async for doc in db.point_data.find({'layers.CLS Customers': {'$exists': True}}):
+            async for doc in db.point_data.find({'layers.CLS Customer Head Sheds': {'$exists': True}}):
                 await db.point_data.update_one(
                     {'_id': doc['_id']},
-                    {'$unset': {'layers.CLS Customers': ''}}
+                    {'$unset': {'layers.CLS Customer Head Sheds': ''}}
                 )
 
             all_location_layers = await db.location_points.distinct('layer')

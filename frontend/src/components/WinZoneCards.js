@@ -32,7 +32,7 @@ const LAYER_CATEGORIES = {
   'Terminals Soybean Oil': 'partners',
   'Terminals Soybean Meal': 'partners',
   // CLS
-  'CLS Customers': 'cls',
+  'CLS Customer Head Sheds': 'cls',
 };
 
 const CATEGORY_LABELS = {
@@ -332,7 +332,7 @@ const WinZoneCards = ({
       // Find nearest CLS Customer (check both legacy pointData and individual locationData)
       let nearestCLS = null;
       (pointData || []).forEach(city => {
-        const clsCount = city.layers?.['CLS Customers'] || 0;
+        const clsCount = city.layers?.['CLS Customer Head Sheds'] || 0;
         if (clsCount <= 0) return;
         const dist = quickDist(lat, lon, city.lat, city.lon);
         if (!nearestCLS || dist < nearestCLS.dist) {
@@ -340,7 +340,7 @@ const WinZoneCards = ({
         }
       });
       (locationData || []).forEach(loc => {
-        if (loc.layer !== 'CLS Customers') return;
+        if (loc.layer !== 'CLS Customer Head Sheds') return;
         const dist = quickDist(lat, lon, loc.lat, loc.lon);
         if (!nearestCLS || dist < nearestCLS.dist) {
           nearestCLS = { city: loc.city, state: loc.state, dist: Math.round(dist), name: loc.name };

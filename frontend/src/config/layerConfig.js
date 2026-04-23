@@ -3,7 +3,7 @@
 
 export const LAYER_CONFIG = {
   // --- POINT LAYERS (City-level data with lat/lon) ---
-  "CLS Customers": {
+  "CLS Customer Head Sheds": {
     type: "point",
     radius: { enabled: true, default: 50, options: [25, 50, 100] },
     color: "#0369A1",
