@@ -1,0 +1,107 @@
+{
+  "summary": "Completed comprehensive frontend testing of new Industry Layers (Grain Fumigation, FSS Milling, Grain Terminals). All 11 features tested - 10 passed, 1 partially tested (popup click). New layers display correctly with proper counts, master toggles work for groups, expand/collapse works, Market Views don't activate new layers, Win Zones work correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "WinZoneCards.js",
+        "issue": "React hydration warning: nested button inside button (visibility toggle inside card header button)",
+        "selector": "WinZoneCards lines 436-474",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Grain Fumigation layer toggle works and shows 59 points on map - PASS",
+    "FSS Milling group master toggle turns all 4 sub-layers ON/OFF - PASS",
+    "FSS Milling individual sub-layers toggle independently (FSS Grain, FSS Flour Mills, FSS Specialty Mills, FSS Mix Plants) - PASS",
+    "FSS Milling group expands/collapses when clicking the arrow - PASS",
+    "Grain Terminals group master toggle turns all 8 sub-layers ON/OFF - PASS",
+    "Grain Terminals individual sub-layers toggle independently - PASS",
+    "Grain Terminals group expands/collapses - PASS",
+    "Layer Stats show correct counts when layers are active - PASS (all 13 layers verified)",
+    "Market Views (Wheat, Corn, etc.) still work correctly and don't activate any new layers - PASS",
+    "Win Zones still work with Wheat market view - PASS (shows Central North Dakota #1, Central Kansas #2, West Montana #3)"
+  ],
+  "partially_tested": [
+    "Clicking on a point shows popup with company name, layer type, and city/state - PARTIAL (popup code verified in MapboxVisualization.js lines 689-754, but automated clicking on small map points was difficult)"
+  ],
+  "test_report_links": [
+    "/app/test_reports/iteration_8.json"
+  ],
+  "action_items": [
+    "MINOR: Fix nested button warning in WinZoneCards.js - change outer button to div with onClick handler"
+  ],
+  "critical_code_review_comments": [
+    "WinZoneCards.js has nested button elements (visibility toggle button inside card header button) causing React hydration warning - should refactor to use div with onClick for outer element"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend only testing)",
+    "frontend": "91% (10/11 tests passed, 1 partial)"
+  },
+  "test_credentials": "No authentication required. Mapbox token configured in frontend/.env",
+  "seed_data_creation": "All new layer data already loaded in location_points collection",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "New Industry Layers added: Grain Fumigation (59), FSS Milling group (4 sub-layers: Grain 1019, Flour Mills 161, Specialty Mills 372, Mix Plants 81), Grain Terminals group (8 sub-layers: SRW Wheat 61, HRW Wheat 17, HRS Wheat 8, Corn & Soybean 25, Rough Rice 21, Oats 6, Soybean Oil 35, Soybean Meal 33). Key data-testids: layer-toggle-Grain Fumigation, sublayer-group-fss_milling, sublayer-toggle-all-fss_milling, sublayer-group-terminals, sublayer-toggle-all-terminals, layer-toggle-FSS Grain, layer-toggle-Terminals SRW Wheat, etc. Groups are collapsed by default. Master toggle on group header turns all sub-layers on/off. Popup shows name, layer type, city/state, and optional fields (capacity, type, commodity).",
+  "features_verified": {
+    "grain_fumigation": {
+      "status": "PASS",
+      "details": "59 points displayed, toggle works, radius toggle available"
+    },
+    "fss_milling_group": {
+      "status": "PASS",
+      "details": "Master toggle turns all 4 sub-layers ON/OFF, expand/collapse works, badge shows active count"
+    },
+    "fss_milling_sublayers": {
+      "status": "PASS",
+      "details": "FSS Grain (1019), FSS Flour Mills (161), FSS Specialty Mills (372), FSS Mix Plants (81) - all toggle independently"
+    },
+    "grain_terminals_group": {
+      "status": "PASS",
+      "details": "Master toggle turns all 8 sub-layers ON/OFF, expand/collapse works, badge shows active count"
+    },
+    "grain_terminals_sublayers": {
+      "status": "PASS",
+      "details": "All 8 terminal types toggle independently with correct counts"
+    },
+    "layer_stats": {
+      "status": "PASS",
+      "details": "All 13 new layers show correct counts in Layer Stats section"
+    },
+    "market_views_isolation": {
+      "status": "PASS",
+      "details": "Wheat market view does NOT activate Grain Fumigation, FSS Milling, or Terminals layers"
+    },
+    "win_zones": {
+      "status": "PASS",
+      "details": "Win Zones work correctly with Wheat market view - shows Central North Dakota #1, Central Kansas #2, West Montana #3"
+    },
+    "popup": {
+      "status": "PARTIAL",
+      "details": "Popup code verified in MapboxVisualization.js (lines 689-754) with capacity, type, commodity fields. Automated clicking on small map points was difficult."
+    }
+  },
+  "layer_counts_verified": {
+    "Grain Fumigation": 59,
+    "FSS Grain": 1019,
+    "FSS Flour Mills": 161,
+    "FSS Specialty Mills": 372,
+    "FSS Mix Plants": 81,
+    "Terminals SRW Wheat": 61,
+    "Terminals HRW Wheat": 17,
+    "Terminals HRS Wheat": 8,
+    "Terminals Corn & Soybean": 25,
+    "Terminals Rough Rice": 21,
+    "Terminals Oats": 6,
+    "Terminals Soybean Oil": 35,
+    "Terminals Soybean Meal": 33
+  },
+  "note": "Problem statement mentioned 62 Grain Fumigation records but actual data shows 59 - this is a data discrepancy, not a code issue"
+}

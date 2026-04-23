@@ -39,41 +39,151 @@ export const LAYER_CONFIG = {
     order: 5
   },
 
+  // --- GRAIN FUMIGATION ---
+  "Grain Fumigation": {
+    type: "point",
+    group: "fumigation",
+    radius: { enabled: true, default: 50, options: [25, 50, 100] },
+    color: "#DC2626",
+    markerColor: "#DC2626",
+    order: 6
+  },
+
+  // --- FSS MILLING (sub-layers by category) ---
+  "FSS Grain": {
+    type: "point",
+    group: "fss_milling",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#D97706",
+    markerColor: "#D97706",
+    order: 10
+  },
+  "FSS Flour Mills": {
+    type: "point",
+    group: "fss_milling",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#CA8A04",
+    markerColor: "#CA8A04",
+    order: 11
+  },
+  "FSS Specialty Mills": {
+    type: "point",
+    group: "fss_milling",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#A16207",
+    markerColor: "#A16207",
+    order: 12
+  },
+  "FSS Mix Plants": {
+    type: "point",
+    group: "fss_milling",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#854D0E",
+    markerColor: "#854D0E",
+    order: 13
+  },
+
+  // --- GRAIN TERMINALS (sub-layers by commodity) ---
+  "Terminals SRW Wheat": {
+    type: "point",
+    group: "terminals",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#EA580C",
+    markerColor: "#EA580C",
+    order: 20
+  },
+  "Terminals HRW Wheat": {
+    type: "point",
+    group: "terminals",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#C2410C",
+    markerColor: "#C2410C",
+    order: 21
+  },
+  "Terminals HRS Wheat": {
+    type: "point",
+    group: "terminals",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#9A3412",
+    markerColor: "#9A3412",
+    order: 22
+  },
+  "Terminals Corn & Soybean": {
+    type: "point",
+    group: "terminals",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#16A34A",
+    markerColor: "#16A34A",
+    order: 23
+  },
+  "Terminals Rough Rice": {
+    type: "point",
+    group: "terminals",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#0891B2",
+    markerColor: "#0891B2",
+    order: 24
+  },
+  "Terminals Oats": {
+    type: "point",
+    group: "terminals",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#65A30D",
+    markerColor: "#65A30D",
+    order: 25
+  },
+  "Terminals Soybean Oil": {
+    type: "point",
+    group: "terminals",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#0D9488",
+    markerColor: "#0D9488",
+    order: 26
+  },
+  "Terminals Soybean Meal": {
+    type: "point",
+    group: "terminals",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#059669",
+    markerColor: "#059669",
+    order: 27
+  },
+
   // --- DENSITY LAYERS (County-level aggregations) ---
   "1000+ Wheat Growers": {
     type: "density",
     radius: { enabled: false },
     color: "#F59E0B",
     fillOpacity: 0.6,
-    order: 10
+    order: 50
   },
   "1000+ Corn Growers": {
     type: "density",
     radius: { enabled: false },
     color: "#EA580C",
     fillOpacity: 0.6,
-    order: 11
+    order: 51
   },
   "1000+ Rice Growers": {
     type: "density",
     radius: { enabled: false },
     color: "#0E7490",
     fillOpacity: 0.6,
-    order: 12
+    order: 52
   },
   "1000+ Hogs": {
     type: "density",
     radius: { enabled: false },
     color: "#9F1239",
     fillOpacity: 0.6,
-    order: 13
+    order: 53
   },
   "Farms with Grain Storage": {
     type: "density",
     radius: { enabled: false },
     color: "#84CC16",
     fillOpacity: 0.6,
-    order: 11
+    order: 54
   },
 
   // --- ACREAGE LAYERS ---
@@ -82,22 +192,38 @@ export const LAYER_CONFIG = {
     radius: { enabled: false },
     color: "#D97706",
     fillOpacity: 0.35,
-    order: 12
+    order: 60
   },
   "Rice Acres": {
     type: "base",
     radius: { enabled: false },
     color: "#0891B2",
     fillOpacity: 0.35,
-    order: 13
+    order: 61
   },
   "Corn Acres": {
     type: "base",
     radius: { enabled: false },
     color: "#DC2626",
     fillOpacity: 0.35,
-    order: 14
+    order: 62
   }
+};
+
+// Layer groups for sub-filter UI
+export const LAYER_GROUPS = {
+  fumigation: {
+    label: 'Grain Fumigation',
+    layers: ['Grain Fumigation'],
+  },
+  fss_milling: {
+    label: 'FSS Milling',
+    layers: ['FSS Grain', 'FSS Flour Mills', 'FSS Specialty Mills', 'FSS Mix Plants'],
+  },
+  terminals: {
+    label: 'Grain Terminals',
+    layers: ['Terminals SRW Wheat', 'Terminals HRW Wheat', 'Terminals HRS Wheat', 'Terminals Corn & Soybean', 'Terminals Rough Rice', 'Terminals Oats', 'Terminals Soybean Oil', 'Terminals Soybean Meal'],
+  },
 };
 
 export const getLayerConfig = (layerName) => {
@@ -126,4 +252,22 @@ export const getRadiusLayers = () => {
   return Object.entries(LAYER_CONFIG)
     .filter(([, config]) => config.radius?.enabled)
     .map(([name]) => name);
+};
+
+// Get layers that belong to a specific group
+export const getGroupLayers = (groupKey) => {
+  return LAYER_GROUPS[groupKey]?.layers || [];
+};
+
+// Get the group a layer belongs to (if any)
+export const getLayerGroup = (layerName) => {
+  const config = LAYER_CONFIG[layerName];
+  return config?.group || null;
+};
+
+// Get all grouped layer names
+export const getGroupedLayerNames = () => {
+  const grouped = new Set();
+  Object.values(LAYER_GROUPS).forEach(g => g.layers.forEach(l => grouped.add(l)));
+  return grouped;
 };

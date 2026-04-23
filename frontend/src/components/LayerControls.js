@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { getLayerConfig, getRadiusLayers, getPointLayers, getDensityLayers } from '../config/layerConfig';
-import { ChevronDown, ChevronRight, Palette } from 'lucide-react';
+import { getLayerConfig, getRadiusLayers, getPointLayers, getDensityLayers, LAYER_GROUPS, getGroupedLayerNames } from '../config/layerConfig';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 const RADIUS_OPTIONS = [25, 50, 100];
 
@@ -40,19 +40,22 @@ const ColorPicker = ({ color, onChange, layerName }) => {
   );
 };
 
-const LayerItem = ({ layer, isActive, config, onToggle, color, onColorChange, radiusSetting, onRadiusChange, hasRadius }) => {
+const LayerItem = ({ layer, isActive, onToggle, color, onColorChange, radiusSetting, onRadiusChange, hasRadius, compact = false }) => {
+  // Strip group prefix for display (e.g., "FSS Grain" → "Grain", "Terminals HRW Wheat" → "HRW Wheat")
+  const displayName = compact ? layer.replace(/^(FSS |Terminals |Grain )/, '') : layer;
+
   return (
     <div
       className={`transition-all duration-200 ${isActive ? 'opacity-100' : 'opacity-40 hover:opacity-60'}`}
       data-testid={`layer-item-${layer}`}
     >
       <div
-        className="flex items-center gap-2 py-1.5 cursor-pointer select-none"
+        className="flex items-center gap-2 py-1 cursor-pointer select-none"
         onClick={() => onToggle(layer)}
       >
         <ColorPicker color={color} onChange={(c) => onColorChange(layer, c)} layerName={layer} />
-        <span className={`text-sm flex-1 ${isActive ? 'text-stone-800 font-medium' : 'text-stone-400'}`}>
-          {layer}
+        <span className={`text-xs flex-1 ${isActive ? 'text-stone-800 font-medium' : 'text-stone-400'}`}>
+          {displayName}
         </span>
         <div onClick={(e) => e.stopPropagation()}>
           <Switch
@@ -64,9 +67,8 @@ const LayerItem = ({ layer, isActive, config, onToggle, color, onColorChange, ra
         </div>
       </div>
 
-      {/* Radius controls */}
       {hasRadius && isActive && (
-        <div className="ml-5 mb-1.5 flex items-center gap-1.5">
+        <div className="ml-5 mb-1 flex items-center gap-1.5">
           <Switch
             checked={radiusSetting?.visible || false}
             onCheckedChange={(checked) => {
@@ -126,7 +128,6 @@ const LayerGroup = ({ title, layers, activeLayers, onToggle, layerColors, onColo
                 key={layer}
                 layer={layer}
                 isActive={activeLayers[layer] || false}
-                config={config}
                 onToggle={onToggle}
                 color={layerColors[layer] || config.color}
                 onColorChange={onColorChange}
@@ -142,20 +143,118 @@ const LayerGroup = ({ title, layers, activeLayers, onToggle, layerColors, onColo
   );
 };
 
+// Grouped sub-layer component with master toggle
+const SubLayerGroup = ({ groupKey, group, allLayers, activeLayers, onToggle, layerColors, onColorChange, radiusSettings, onRadiusChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const radiusCapableLayers = getRadiusLayers();
+
+  // Filter to layers that exist in the data
+  const presentLayers = group.layers.filter(l => allLayers.includes(l));
+  if (presentLayers.length === 0) return null;
+
+  const activeCount = presentLayers.filter(l => activeLayers[l]).length;
+  const allActive = activeCount === presentLayers.length;
+  const someActive = activeCount > 0 && !allActive;
+
+  const toggleAll = () => {
+    const targetState = !allActive;
+    presentLayers.forEach(l => {
+      if ((activeLayers[l] || false) !== targetState) {
+        onToggle(l);
+      }
+    });
+  };
+
+  // Single-layer group: just show as a simple toggle, no expand
+  if (presentLayers.length === 1) {
+    const layer = presentLayers[0];
+    const config = getLayerConfig(layer);
+    return (
+      <LayerItem
+        layer={layer}
+        isActive={activeLayers[layer] || false}
+        onToggle={onToggle}
+        color={layerColors[layer] || config.color}
+        onColorChange={onColorChange}
+        radiusSetting={radiusSettings[layer]}
+        onRadiusChange={onRadiusChange}
+        hasRadius={radiusCapableLayers.includes(layer)}
+      />
+    );
+  }
+
+  return (
+    <div className="mb-1" data-testid={`sublayer-group-${groupKey}`}>
+      <div className="flex items-center gap-2 py-1">
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex items-center gap-1 flex-1 text-left"
+        >
+          {isOpen ? <ChevronDown className="w-3 h-3 text-stone-400" /> : <ChevronRight className="w-3 h-3 text-stone-400" />}
+          <span className={`text-xs font-medium ${someActive || allActive ? 'text-stone-800' : 'text-stone-400'}`}>
+            {group.label}
+          </span>
+          {activeCount > 0 && (
+            <span className="text-[9px] bg-stone-200 text-stone-500 px-1.5 py-0.5 rounded ml-1">{activeCount}</span>
+          )}
+        </button>
+        <div onClick={(e) => e.stopPropagation()}>
+          <Switch
+            checked={allActive}
+            onCheckedChange={toggleAll}
+            className={`scale-75 ${someActive ? 'opacity-70' : ''}`}
+            data-testid={`sublayer-toggle-all-${groupKey}`}
+          />
+        </div>
+      </div>
+
+      {isOpen && (
+        <div className="ml-4 border-l border-stone-100 pl-2">
+          {presentLayers.map(layer => {
+            const config = getLayerConfig(layer);
+            return (
+              <LayerItem
+                key={layer}
+                layer={layer}
+                isActive={activeLayers[layer] || false}
+                onToggle={onToggle}
+                color={layerColors[layer] || config.color}
+                onColorChange={onColorChange}
+                radiusSetting={radiusSettings[layer]}
+                onRadiusChange={onRadiusChange}
+                hasRadius={radiusCapableLayers.includes(layer)}
+                compact={true}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const LayerControls = ({ allLayers, activeLayers, onToggle, radiusSettings, onRadiusChange, layerColors, onColorChange }) => {
   const pointLayerNames = getPointLayers();
   const densityLayerNames = getDensityLayers();
+  const groupedLayerNames = getGroupedLayerNames();
 
-  const pointLayers = allLayers.filter(l => pointLayerNames.includes(l));
+  // Ungrouped point layers (not in any sub-layer group)
+  const ungroupedPointLayers = allLayers.filter(l => pointLayerNames.includes(l) && !groupedLayerNames.has(l));
   const densityLayers = allLayers.filter(l => densityLayerNames.includes(l));
-  const otherLayers = allLayers.filter(l => !pointLayerNames.includes(l) && !densityLayerNames.includes(l));
+  const otherLayers = allLayers.filter(l => !pointLayerNames.includes(l) && !densityLayerNames.includes(l) && !groupedLayerNames.has(l));
+
+  // Which groups have data present
+  const activeGroups = Object.entries(LAYER_GROUPS).filter(
+    ([, group]) => group.layers.some(l => allLayers.includes(l))
+  );
 
   return (
     <div data-testid="layer-controls">
-      {pointLayers.length > 0 && (
+      {/* Ungrouped point layers */}
+      {ungroupedPointLayers.length > 0 && (
         <LayerGroup
           title="Point Layers"
-          layers={pointLayers}
+          layers={ungroupedPointLayers}
           activeLayers={activeLayers}
           onToggle={onToggle}
           layerColors={layerColors}
@@ -164,6 +263,33 @@ const LayerControls = ({ allLayers, activeLayers, onToggle, radiusSettings, onRa
           onRadiusChange={onRadiusChange}
         />
       )}
+
+      {/* Grouped sub-layers (Fumigation, FSS Milling, Terminals) */}
+      {activeGroups.length > 0 && (
+        <div className="mb-2">
+          <div className="flex items-center gap-1.5 py-1">
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-stone-400">Industry Layers</span>
+          </div>
+          <div className="ml-1">
+            {activeGroups.map(([key, group]) => (
+              <SubLayerGroup
+                key={key}
+                groupKey={key}
+                group={group}
+                allLayers={allLayers}
+                activeLayers={activeLayers}
+                onToggle={onToggle}
+                layerColors={layerColors}
+                onColorChange={onColorChange}
+                radiusSettings={radiusSettings}
+                onRadiusChange={onRadiusChange}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Density layers */}
       {densityLayers.length > 0 && (
         <LayerGroup
           title="Density Layers"
@@ -176,6 +302,8 @@ const LayerControls = ({ allLayers, activeLayers, onToggle, radiusSettings, onRa
           onRadiusChange={onRadiusChange}
         />
       )}
+
+      {/* Other */}
       {otherLayers.length > 0 && (
         <LayerGroup
           title="Other"
