@@ -605,9 +605,9 @@ const MapboxVisualization = ({
               <Source id="win-zones" type="geojson" data={enrichedCountiesGeoJSON}>
                 <Layer id="win-zone-fill" type="fill" paint={{
                   'fill-color': winZonesEnabled === 'coverage'
-                    ? ['interpolate', ['linear'], ['coalesce', ['get', 'coverage_strength'], 0], 0, 'rgba(0,0,0,0)', 0.05, 'rgba(0,0,0,0)', 0.15, '#FEF9C3', 0.3, '#FDE047', 0.5, '#84CC16', 0.7, '#16A34A', 0.9, '#14532D']
+                    ? ['interpolate', ['linear'], ['coalesce', ['get', 'coverage_strength'], 0], 0, 'rgba(0,0,0,0)', 0.05, 'rgba(0,0,0,0)', 0.15, '#F3E8FF', 0.3, '#C084FC', 0.5, '#A855F7', 0.7, '#7E22CE', 0.9, '#581C87']
                     : winZonesEnabled === 'market'
-                    ? ['interpolate', ['linear'], ['coalesce', ['get', 'market_score'], 0], 0, 'rgba(0,0,0,0)', 0.05, 'rgba(0,0,0,0)', 0.15, '#E0E7FF', 0.3, '#818CF8', 0.5, '#6366F1', 0.7, '#4338CA', 0.9, '#312E81']
+                    ? ['interpolate', ['linear'], ['coalesce', ['get', 'market_score'], 0], 0, 'rgba(0,0,0,0)', 0.05, 'rgba(0,0,0,0)', 0.15, '#DCFCE7', 0.3, '#86EFAC', 0.5, '#22C55E', 0.7, '#15803D', 0.9, '#14532D']
                     : ['interpolate', ['linear'], ['coalesce', ['get', 'win_score'], 0], 0, 'rgba(0,0,0,0)', 0.05, 'rgba(0,0,0,0)', 0.15, '#FEF3C7', 0.3, '#FBBF24', 0.5, '#F97316', 0.7, '#DC2626', 0.9, '#991B1B'],
                   'fill-opacity': ['case', ['>', ['coalesce', ['get', winZonesEnabled === 'coverage' ? 'coverage_strength' : winZonesEnabled === 'market' ? 'market_score' : 'win_score'], 0], 0.05], 0.6, 0]
                 }} />
@@ -790,10 +790,10 @@ const MapboxVisualization = ({
                             <span>Nearest point:</span><span className="font-medium">{popupInfo.nearestMiles} mi</span>
                           </div>
                           <div className="text-xs flex justify-between mt-0.5">
-                            <span className={`font-medium ${popupInfo.winMode === 'coverage' ? 'text-green-600' : popupInfo.winMode === 'market' ? 'text-indigo-600' : 'text-orange-600'}`}>
+                            <span className={`font-medium ${popupInfo.winMode === 'coverage' ? 'text-purple-600' : popupInfo.winMode === 'market' ? 'text-green-600' : 'text-orange-600'}`}>
                               {popupInfo.winMode === 'coverage' ? 'Coverage:' : popupInfo.winMode === 'market' ? 'Market:' : 'Opportunity:'}
                             </span>
-                            <span className={`font-bold ${popupInfo.winMode === 'coverage' ? 'text-green-700' : popupInfo.winMode === 'market' ? 'text-indigo-700' : 'text-orange-700'}`}>
+                            <span className={`font-bold ${popupInfo.winMode === 'coverage' ? 'text-purple-700' : popupInfo.winMode === 'market' ? 'text-green-700' : 'text-orange-700'}`}>
                               {Math.round((popupInfo.winScore || 0) * 100)}%
                             </span>
                           </div>
@@ -840,9 +840,9 @@ const MapboxVisualization = ({
                 <span className="text-[9px] text-stone-400">Low</span>
                 <div className="flex h-2.5 rounded-full overflow-hidden flex-1">
                   {winZonesEnabled === 'coverage' ? (
-                    <><div className="flex-1 bg-yellow-100" /><div className="flex-1 bg-yellow-300" /><div className="flex-1 bg-lime-500" /><div className="flex-1 bg-green-600" /><div className="flex-1 bg-green-900" /></>
+                    <><div className="flex-1 bg-purple-100" /><div className="flex-1 bg-purple-300" /><div className="flex-1 bg-purple-500" /><div className="flex-1 bg-purple-700" /><div className="flex-1 bg-purple-900" /></>
                   ) : winZonesEnabled === 'market' ? (
-                    <><div className="flex-1 bg-indigo-100" /><div className="flex-1 bg-indigo-300" /><div className="flex-1 bg-indigo-500" /><div className="flex-1 bg-indigo-700" /><div className="flex-1 bg-indigo-900" /></>
+                    <><div className="flex-1 bg-green-100" /><div className="flex-1 bg-green-300" /><div className="flex-1 bg-green-500" /><div className="flex-1 bg-green-700" /><div className="flex-1 bg-green-900" /></>
                   ) : (
                     <><div className="flex-1 bg-amber-100" /><div className="flex-1 bg-amber-400" /><div className="flex-1 bg-orange-500" /><div className="flex-1 bg-red-600" /><div className="flex-1 bg-red-900" /></>
                   )}

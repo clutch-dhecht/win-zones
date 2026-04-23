@@ -463,12 +463,12 @@ const WinZoneCards = ({
         const isVisible = zoneVisibility[idx] !== false;
         const isMarket = winZonesMode === 'market';
         const scoreColor = isCoverage
-          ? (zone.score >= 70 ? 'text-green-700' : 'text-green-500')
+          ? (zone.score >= 70 ? 'text-purple-700' : 'text-purple-500')
           : isMarket
-          ? (zone.score >= 70 ? 'text-indigo-700' : 'text-indigo-500')
+          ? (zone.score >= 70 ? 'text-green-700' : 'text-green-500')
           : (zone.score >= 70 ? 'text-red-600' : 'text-orange-500');
-        const bgColor = isCoverage ? 'border-green-200 bg-green-50/50' : isMarket ? 'border-indigo-200 bg-indigo-50/50' : 'border-orange-200 bg-orange-50/50';
-        const headerBg = isCoverage ? 'bg-green-100/50' : isMarket ? 'bg-indigo-100/50' : 'bg-orange-100/50';
+        const bgColor = isCoverage ? 'border-purple-200 bg-purple-50/50' : isMarket ? 'border-green-200 bg-green-50/50' : 'border-orange-200 bg-orange-50/50';
+        const headerBg = isCoverage ? 'bg-purple-100/50' : isMarket ? 'bg-green-100/50' : 'bg-orange-100/50';
 
         return (
           <div key={idx} className={`rounded-lg border ${bgColor} overflow-hidden ${!isVisible ? 'opacity-40' : ''}`} data-testid={`win-zone-card-${idx}`}>

@@ -219,8 +219,8 @@ const MapDashboard = ({ apiUrl }) => {
           </div>
           {winZonesMode && (
             <div className="ml-5 mt-1.5 flex items-center gap-1">
-              <button onClick={() => setWinZonesMode('market')} className={`text-[10px] px-2 py-1 rounded transition-colors ${winZonesMode === 'market' ? 'bg-stone-800 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'}`} data-testid="win-mode-market">Market</button>
-              <button onClick={() => setWinZonesMode('coverage')} className={`text-[10px] px-2 py-1 rounded transition-colors ${winZonesMode === 'coverage' ? 'bg-green-700 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'}`} data-testid="win-mode-coverage">Coverage</button>
+              <button onClick={() => setWinZonesMode('market')} className={`text-[10px] px-2 py-1 rounded transition-colors ${winZonesMode === 'market' ? 'bg-green-700 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'}`} data-testid="win-mode-market">Market</button>
+              <button onClick={() => setWinZonesMode('coverage')} className={`text-[10px] px-2 py-1 rounded transition-colors ${winZonesMode === 'coverage' ? 'bg-purple-700 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'}`} data-testid="win-mode-coverage">Coverage</button>
               <button onClick={() => setWinZonesMode('opportunity')} className={`text-[10px] px-2 py-1 rounded transition-colors ${winZonesMode === 'opportunity' ? 'bg-orange-600 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'}`} data-testid="win-mode-opportunity">Opportunity</button>
               <button
                 onClick={() => setShowZoneFocus(v => !v)}
