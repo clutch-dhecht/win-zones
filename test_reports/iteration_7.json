@@ -1,0 +1,67 @@
+{
+  "summary": "Completed comprehensive frontend testing of CLS Customers data migration (1,047 records with customer_name and ship_to_name). All 8 features tested and passing. CLS Customers display correctly as blue clustered dots with proper popup showing Ship To Name (bold), Customer Name, 'CLS Customers' label, and City/State. Win Zones with Wheat market shows Kansas as #2. All Market Views working correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "CLS Customers layer shows 1,047 points on the map when toggled ON (via Advanced Data Layers) - PASS",
+    "CLS Customers appear as blue clustered dots with proper clustering behavior (zoom in to uncluster) - PASS",
+    "Clicking an unclustered CLS Customer point shows popup with: Ship To Name (bold), Customer Name (if different), 'CLS Customers' label, and City/State - PASS (tested with VAN DIEST SUPPLY CO ABILENE KS)",
+    "Layer Stats show '1,047 CLS Customers' when CLS is the only active layer - PASS",
+    "Wheat market view with Win Zones ON shows Kansas as #2 (Central Kansas - 75 counties, 19% of market, 96% coverage) - PASS",
+    "Win Zones still function correctly with CLS data now in location_points instead of point_data - PASS",
+    "CLS Customers radius circle toggle works in advanced layers (25mi, 50mi, 100mi options) - PASS",
+    "All Market Views (Rice, Wheat, Corn, Hogs, Pest Control) still work correctly - PASS"
+  ],
+  "test_report_links": [
+    "/app/test_reports/iteration_7.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend only testing)",
+    "frontend": "100% (8/8 tests passed)"
+  },
+  "test_credentials": "No authentication required. Mapbox token configured in frontend/.env",
+  "seed_data_creation": "CLS Customers data already loaded (1,047 records with customer_name and ship_to_name fields)",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "CLS Customers data successfully migrated from aggregated point_data (57 city records) to individual location_points (1,047 records). Each record has customer_name and ship_to_name fields. CLS Customers render through locationGeoJSON with Mapbox clustering. Popup shows Ship To Name in bold, Customer Name below if different, 'CLS Customers' label, and City/State. Key data-testids: layer-toggle-CLS Customers, radius-toggle-CLS Customers, radius-miles-CLS Customers-{25|50|100}, stat-CLS Customers, market-{rice|wheat|corn|hogs|pest}, win-zones-toggle, win-zone-cards, win-zone-card-{0-4}.",
+  "features_verified": {
+    "cls_customers_count": {
+      "status": "PASS",
+      "details": "Layer Stats shows '1,047 CLS Customers' when CLS layer is active"
+    },
+    "cls_customers_clustering": {
+      "status": "PASS",
+      "details": "CLS Customers display as blue clustered dots (dark circles with numbers) that uncluster when zooming in"
+    },
+    "cls_customers_popup": {
+      "status": "PASS",
+      "details": "Popup shows: Ship To Name (bold) 'VAN DIEST SUPPLY CO ABILENE KS', Customer Name 'VAN DIEST SUPPLY CO', Layer 'CLS Customers', Location 'Abilene, Kansas'"
+    },
+    "kansas_in_top_zones": {
+      "status": "PASS",
+      "details": "Central Kansas is #2 in Top Market Zones for Wheat (75 counties, 19% of market, 96% coverage)"
+    },
+    "win_zones_with_location_points": {
+      "status": "PASS",
+      "details": "Win Zones calculate correctly using CLS data from location_points (WinZoneCards.js checks both pointData and locationData)"
+    },
+    "cls_radius_toggle": {
+      "status": "PASS",
+      "details": "Radius toggle visible and functional with 25mi, 50mi, 100mi options. Circles display correctly around CLS Customer points"
+    },
+    "market_views": {
+      "status": "PASS",
+      "details": "All 5 market views work correctly: Rice (2,110 growers, 2.3M acres), Wheat (25,704 growers, 37M+ acres), Corn (48,546 growers, 80M+ acres), Hogs (62M+ hogs, 665 manufacturers), Pest Control (263,164 farms, 23,737 pest control)"
+    }
+  }
+}

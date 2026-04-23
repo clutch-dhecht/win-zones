@@ -12,7 +12,10 @@ import uuid
 from datetime import datetime, timezone
 import pandas as pd
 import io
-from us_cities_data import is_us_state
+from us_cities_data import is_us_state, STATE_ABBREV
+
+# Reverse: abbreviation -> full state name
+ABBREV_TO_STATE = {v: k for k, v in STATE_ABBREV.items()}
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -118,19 +121,98 @@ LOCATION_LAYER_MAP = {
 
 @api_router.post("/upload/point")
 async def upload_point_data(file: UploadFile = File(...)):
-    """Upload point-level CSV data. Supports two formats:
+    """Upload point-level data. Supports CSV and XLSX in multiple formats:
     1. City/State + numeric layer columns (aggregated)
     2. Location lists with lat/lon (name, street, city, state, zip, lat, lon)
+    3. CLS-style: Customer Name, Ship To Name, City, State (geocoded automatically)
     """
     try:
         contents = await file.read()
-        df = pd.read_csv(io.BytesIO(contents))
+        filename = (file.filename or '').lower()
+
+        if filename.endswith('.xlsx') or filename.endswith('.xls'):
+            df = pd.read_excel(io.BytesIO(contents))
+        else:
+            df = pd.read_csv(io.BytesIO(contents))
 
         # Detect format: location list (has latitude/longitude) vs aggregated (City/State + numbers)
         has_coords = 'latitude' in df.columns and 'longitude' in df.columns
         has_city_state = 'City' in df.columns and 'State' in df.columns
+        # CLS-style: Customer Name + Ship To Name + City + State (no coords)
+        cols_lower = {c.strip().lower(): c for c in df.columns}
+        has_customer_name = any('customer' in k and 'name' in k for k in cols_lower)
+        has_ship_to = any('ship' in k and 'name' in k for k in cols_lower)
 
-        if has_coords:
+        if has_customer_name and has_ship_to and not has_coords:
+            # CLS Customer format — geocode by city/state
+            cust_col = next(cols_lower[k] for k in cols_lower if 'customer' in k and 'name' in k)
+            ship_col = next(cols_lower[k] for k in cols_lower if 'ship' in k and 'name' in k)
+            city_col = next((cols_lower[k] for k in cols_lower if k == 'city'), None)
+            state_col = next((cols_lower[k] for k in cols_lower if k == 'state'), None)
+
+            if not city_col or not state_col:
+                raise HTTPException(status_code=400, detail="CLS format requires City and State columns")
+
+            layer_name = 'CLS Customers'
+            points = []
+            skipped_count = 0
+
+            for _, row in df.iterrows():
+                customer_name = str(row[cust_col]).strip() if pd.notna(row[cust_col]) else ''
+                ship_to_name = str(row[ship_col]).strip() if pd.notna(row[ship_col]) else ''
+                city = str(row[city_col]).strip() if pd.notna(row[city_col]) else ''
+                state_raw = str(row[state_col]).strip() if pd.notna(row[state_col]) else ''
+
+                if not city or not state_raw:
+                    skipped_count += 1
+                    continue
+
+                state_full = ABBREV_TO_STATE.get(state_raw.upper(), state_raw)
+                geo = geocode_city_advanced(city, state_full)
+                if not geo:
+                    skipped_count += 1
+                    continue
+
+                points.append({
+                    'name': ship_to_name or customer_name,
+                    'customer_name': customer_name,
+                    'ship_to_name': ship_to_name,
+                    'layer': layer_name,
+                    'city': city.title(),
+                    'state': state_full,
+                    'lat': geo['lat'],
+                    'lon': geo['lon'],
+                })
+
+            # Replace old CLS location_points
+            await db.location_points.delete_many({'layer': layer_name})
+            if points:
+                await db.location_points.insert_many(points)
+
+            # Also remove CLS from point_data (legacy aggregated)
+            async for doc in db.point_data.find({'layers.CLS Customers': {'$exists': True}}):
+                await db.point_data.update_one(
+                    {'_id': doc['_id']},
+                    {'$unset': {'layers.CLS Customers': ''}}
+                )
+
+            all_location_layers = await db.location_points.distinct('layer')
+            agg_data = await db.point_data.find({}, {"_id": 0, "layers": 1}).to_list(1000)
+            agg_layers = set()
+            for d in agg_data:
+                agg_layers.update(d.get('layers', {}).keys())
+            all_layers = sorted(set(all_location_layers) | agg_layers)
+
+            logging.info(f"CLS upload: {len(points)} geocoded, {skipped_count} skipped")
+            return {
+                "success": True,
+                "processed": len(points),
+                "skipped": skipped_count,
+                "layer_added": layer_name,
+                "layers": all_layers
+            }
+
+        elif has_coords:
             # Location list format — store as individual points
             first_col = df.columns[0]
             layer_name = LOCATION_LAYER_MAP.get(first_col, first_col)

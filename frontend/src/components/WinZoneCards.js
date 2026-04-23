@@ -316,7 +316,7 @@ const WinZoneCards = ({
         }
       });
 
-      // Find nearest CLS Customer
+      // Find nearest CLS Customer (check both legacy pointData and individual locationData)
       let nearestCLS = null;
       (pointData || []).forEach(city => {
         const clsCount = city.layers?.['CLS Customers'] || 0;
@@ -324,6 +324,13 @@ const WinZoneCards = ({
         const dist = quickDist(lat, lon, city.lat, city.lon);
         if (!nearestCLS || dist < nearestCLS.dist) {
           nearestCLS = { city: city.city, state: city.state, dist: Math.round(dist) };
+        }
+      });
+      (locationData || []).forEach(loc => {
+        if (loc.layer !== 'CLS Customers') return;
+        const dist = quickDist(lat, lon, loc.lat, loc.lon);
+        if (!nearestCLS || dist < nearestCLS.dist) {
+          nearestCLS = { city: loc.city, state: loc.state, dist: Math.round(dist), name: loc.name };
         }
       });
 

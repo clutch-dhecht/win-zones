@@ -144,6 +144,8 @@ const MapboxVisualization = ({
         properties: {
           id: `loc-${idx}`,
           name: loc.name || '',
+          customer_name: loc.customer_name || '',
+          ship_to_name: loc.ship_to_name || '',
           layer: loc.layer,
           city: loc.city,
           state: loc.state,
@@ -425,6 +427,8 @@ const MapboxVisualization = ({
         longitude: feature.geometry.coordinates[0],
         latitude: feature.geometry.coordinates[1],
         name: feature.properties.name,
+        customer_name: feature.properties.customer_name,
+        ship_to_name: feature.properties.ship_to_name,
         layer: feature.properties.layer,
         city: feature.properties.city,
         state: feature.properties.state,
@@ -681,6 +685,9 @@ const MapboxVisualization = ({
                   {popupInfo.type === 'location' && (
                     <>
                       <div className="text-xs font-semibold text-stone-900">{popupInfo.name}</div>
+                      {popupInfo.customer_name && popupInfo.customer_name !== popupInfo.name && (
+                        <div className="text-[10px] text-stone-500 mt-0.5">{popupInfo.customer_name}</div>
+                      )}
                       <div className="text-[10px] text-stone-400 mt-0.5">{popupInfo.layer}</div>
                       {popupInfo.address && <div className="text-xs text-stone-600 mt-1">{popupInfo.address}</div>}
                       <div className="text-xs text-stone-600">{popupInfo.city}, {popupInfo.state} {popupInfo.zip}</div>
