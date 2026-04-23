@@ -364,21 +364,42 @@ const WinZoneCards = ({
       const counties = cluster.map(c => `${c.county}, ${c.state}`);
       const zoneDensity = cluster.reduce((s, c) => s + c.rawDensity, 0);
 
-      // Top 10 counties by raw density with per-county people-to-reach layers
+      // Top 10 counties by people-to-reach total, showing only people layers + point counts
+      // Pre-filter location points to zone bbox for performance
+      const zoneLocations = (locationData || []).filter(loc => {
+        if (!activeLayers[loc.layer]) return false;
+        if (LAYER_CATEGORIES[loc.layer] === 'cls') return false;
+        return loc.lat >= bbox.minLat && loc.lat <= bbox.maxLat &&
+               loc.lon >= bbox.minLon && loc.lon <= bbox.maxLon;
+      });
+
       const topCounties = [...cluster]
-        .sort((a, b) => b.rawDensity - a.rawDensity)
-        .slice(0, 10)
         .map(c => {
           const layers = {};
+          let peopleTotal = 0;
+          // Density layers categorized as "people"
           Object.entries(c.densityLayers).forEach(([l, v]) => {
-            if (activeLayers[l] && v > 0 && LAYER_CATEGORIES[l] === 'people') layers[l] = v;
+            if (activeLayers[l] && v > 0 && LAYER_CATEGORIES[l] === 'people') {
+              layers[l] = v;
+              peopleTotal += v;
+            }
+          });
+          // Point locations near this county centroid (~30mi)
+          zoneLocations.forEach(loc => {
+            const dist = quickDist(c.lat, c.lon, loc.lat, loc.lon);
+            if (dist < 30) {
+              layers[loc.layer] = (layers[loc.layer] || 0) + 1;
+              peopleTotal += 1;
+            }
           });
           return {
             name: `${c.county}, ${c.state}`,
-            rawDensity: c.rawDensity,
+            peopleTotal,
             layers,
           };
-        });
+        })
+        .sort((a, b) => b.peopleTotal - a.peopleTotal)
+        .slice(0, 10);
 
       const avgCoverage = cluster.reduce((s, c) => s + c.coveragePct, 0) / cluster.length;
       const coveragePctRound = Math.round(avgCoverage * 100);
@@ -546,15 +567,17 @@ const WinZoneCards = ({
                       <div key={tcIdx} className="mb-1.5 last:mb-0">
                         <div className="flex justify-between items-baseline">
                           <span className="text-[11px] font-medium text-stone-800">{tc.name}</span>
-                          <span className="text-[10px] font-semibold text-stone-600">{formatNum(tc.rawDensity)}</span>
+                          <span className="text-[10px] font-semibold text-stone-600">{formatNum(tc.peopleTotal)}</span>
                         </div>
-                        <div className="flex flex-wrap gap-x-3 mt-0.5">
-                          {Object.entries(tc.layers).map(([l, v]) => (
-                            <span key={l} className="text-[9px] text-stone-400">
-                              {l}: <span className="text-stone-600">{formatNum(v)}</span>
-                            </span>
-                          ))}
-                        </div>
+                        {Object.keys(tc.layers).length > 0 && (
+                          <div className="flex flex-wrap gap-x-3 mt-0.5">
+                            {Object.entries(tc.layers).map(([l, v]) => (
+                              <span key={l} className="text-[9px] text-stone-400">
+                                {l}: <span className="text-stone-600">{formatNum(v)}</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
