@@ -31,6 +31,8 @@ const LAYER_CATEGORIES = {
   'Terminals Oats': 'partners',
   'Terminals Soybean Oil': 'partners',
   'Terminals Soybean Meal': 'partners',
+  'CHS Grain': 'partners',
+  'CHS Agronomy': 'partners',
   // CLS
   'CLS Customer Head Sheds': 'cls',
 };

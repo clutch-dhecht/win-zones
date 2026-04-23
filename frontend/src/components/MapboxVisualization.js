@@ -155,6 +155,7 @@ const MapboxVisualization = ({
           type: loc.type || '',
           commodity: loc.commodity || '',
           region: loc.region || '',
+          division: loc.division || '',
           color: getColor(loc.layer, layerColors)
         }
       });
@@ -442,6 +443,7 @@ const MapboxVisualization = ({
         locType: feature.properties.type,
         commodity: feature.properties.commodity,
         region: feature.properties.region,
+        division: feature.properties.division,
       });
     } else if (feature.layer.id === 'city-markers-unclustered') {
       setPopupInfo({
@@ -697,6 +699,7 @@ const MapboxVisualization = ({
                         <div className="text-[10px] text-stone-500 mt-0.5">{popupInfo.customer_name}</div>
                       )}
                       <div className="text-[10px] text-stone-400 mt-0.5">{popupInfo.layer}</div>
+                      {popupInfo.division && <div className="text-[10px] text-stone-500 mt-0.5">{popupInfo.division}</div>}
                       {popupInfo.locType && <div className="text-[10px] text-stone-500 mt-0.5">{popupInfo.locType}</div>}
                       {popupInfo.commodity && <div className="text-[10px] text-stone-500 mt-0.5">{popupInfo.commodity}</div>}
                       {popupInfo.capacity && <div className="text-[10px] text-stone-500 mt-0.5">Capacity: {popupInfo.capacity}</div>}

@@ -149,6 +149,24 @@ export const LAYER_CONFIG = {
     order: 27
   },
 
+  // --- CHS LOCATIONS (sub-layers by Grain / Agronomy) ---
+  "CHS Grain": {
+    type: "point",
+    group: "chs",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#2563EB",
+    markerColor: "#2563EB",
+    order: 30
+  },
+  "CHS Agronomy": {
+    type: "point",
+    group: "chs",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#7C3AED",
+    markerColor: "#7C3AED",
+    order: 31
+  },
+
   // --- DENSITY LAYERS (County-level aggregations) ---
   "1000+ Wheat Growers": {
     type: "density",
@@ -223,6 +241,10 @@ export const LAYER_GROUPS = {
   terminals: {
     label: 'Grain Terminals',
     layers: ['Terminals SRW Wheat', 'Terminals HRW Wheat', 'Terminals HRS Wheat', 'Terminals Corn & Soybean', 'Terminals Rough Rice', 'Terminals Oats', 'Terminals Soybean Oil', 'Terminals Soybean Meal'],
+  },
+  chs: {
+    label: 'CHS Locations',
+    layers: ['CHS Grain', 'CHS Agronomy'],
   },
 };
 
