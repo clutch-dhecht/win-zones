@@ -644,21 +644,21 @@ const MapboxVisualization = ({
 
             {/* Individual location points with clustering */}
             {locationGeoJSON && (
-              <Source id="location-source" type="geojson" data={locationGeoJSON} cluster={true} clusterMaxZoom={14} clusterRadius={40}>
+              <Source id="location-source" type="geojson" data={locationGeoJSON} cluster={true} clusterMaxZoom={11} clusterRadius={18}>
                 <Layer id="location-clusters" type="circle" filter={['has', 'point_count']} paint={{
                   'circle-color': ['step', ['get', 'point_count'], '#57534E', 20, '#44403C', 100, '#292524', 500, '#1C1917'],
-                  'circle-radius': ['step', ['get', 'point_count'], 14, 20, 18, 100, 24, 500, 30],
-                  'circle-stroke-width': 2, 'circle-stroke-color': '#FFFFFF'
+                  'circle-radius': ['step', ['get', 'point_count'], 11, 20, 14, 100, 18, 500, 22],
+                  'circle-stroke-width': 1.5, 'circle-stroke-color': '#FFFFFF'
                 }} />
                 <Layer id="location-cluster-count" type="symbol" filter={['has', 'point_count']}
-                  layout={{ 'text-field': '{point_count_abbreviated}', 'text-size': 11, 'text-font': ['DIN Pro Medium', 'Arial Unicode MS Bold'] }}
+                  layout={{ 'text-field': '{point_count_abbreviated}', 'text-size': 10, 'text-font': ['DIN Pro Medium', 'Arial Unicode MS Bold'] }}
                   paint={{ 'text-color': '#FFFFFF' }}
                 />
                 <Layer id="location-points-unclustered" type="circle" filter={['!', ['has', 'point_count']]} paint={{
-                  'circle-radius': 4,
+                  'circle-radius': 5,
                   'circle-color': locationColorExpr,
                   'circle-opacity': 0.9,
-                  'circle-stroke-width': 1,
+                  'circle-stroke-width': 1.5,
                   'circle-stroke-color': '#FFFFFF'
                 }} />
               </Source>
