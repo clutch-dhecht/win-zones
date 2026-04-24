@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 import pandas as pd
 import io
 from us_cities_data import is_us_state, STATE_ABBREV
+from seed_data_startup import seed_all
 
 # Reverse: abbreviation -> full state name
 ABBREV_TO_STATE = {v: k for k, v in STATE_ABBREV.items()}
@@ -573,5 +574,8 @@ async def migrate_layer_names():
                 logger.info(f"Migrated {len(bulk_ops)} docs in {coll_name}")
 
         logger.info("Layer migration complete")
+
+        # Seed imported datasets if missing
+        await seed_all(db)
     except Exception as e:
         logger.error(f"Migration error: {e}")
