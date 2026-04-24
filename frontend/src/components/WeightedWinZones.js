@@ -209,6 +209,13 @@ const WeightedWinZones = ({
     if (scored.length === 0) return [];
 
     // ── Normalize ──
+    // Use state-aware normalization: boost counties in high-total states
+    const stateOppTotals = {};
+    scored.forEach(c => {
+      stateOppTotals[c.state] = (stateOppTotals[c.state] || 0) + c.opportunityRaw;
+    });
+    const maxStateOpp = Math.max(...Object.values(stateOppTotals), 1);
+
     const maxOpp = Math.max(...scored.map(c => c.opportunityRaw), 1);
     const maxAcc = Math.max(...scored.map(c => c.accessRaw), 1);
     const maxEff = Math.max(...scored.map(c => c.efficiencyRaw), 0.001);
@@ -219,7 +226,10 @@ const WeightedWinZones = ({
     const wTotal = wOpp + wAcc + wEff;
 
     scored.forEach(c => {
-      const normOpp = c.opportunityRaw / maxOpp;
+      // Blend per-county opportunity (60%) with state-total opportunity (40%)
+      const countyOpp = c.opportunityRaw / maxOpp;
+      const stateOpp = (stateOppTotals[c.state] || 0) / maxStateOpp;
+      const normOpp = countyOpp * 0.6 + stateOpp * 0.4;
       const normAcc = c.accessRaw / maxAcc;
       const normEff = hasEfficiency ? c.efficiencyRaw / maxEff : 0;
       // Gate: access & efficiency are dampened in counties with little crop presence
