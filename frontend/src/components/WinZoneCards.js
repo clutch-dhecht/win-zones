@@ -305,6 +305,35 @@ const WinZoneCards = ({
       cumulativeDensity += cluster.reduce((s, c) => s + c.rawDensity, 0);
     }
 
+    // Backfill: absorb unclaimed high-density counties into nearest zone
+    if (topClusters.length > 0) {
+      // Compute centroid for each zone
+      const zoneCentroids = topClusters.map(cluster => {
+        let tLat = 0, tLon = 0;
+        cluster.forEach(c => { tLat += c.lat; tLon += c.lon; });
+        return { lat: tLat / cluster.length, lon: tLon / cluster.length };
+      });
+
+      const assignedIds = new Set();
+      topClusters.forEach(cluster => cluster.forEach(c => assignedIds.add(c.id)));
+
+      for (const candidate of candidates) {
+        if (assignedIds.has(candidate.id)) continue;
+        if (candidate.rawDensity <= 0) continue;
+
+        // Find nearest zone centroid within 150mi
+        let bestIdx = -1, bestDist = 150;
+        for (let z = 0; z < zoneCentroids.length; z++) {
+          const d = quickDist(candidate.lat, candidate.lon, zoneCentroids[z].lat, zoneCentroids[z].lon);
+          if (d < bestDist) { bestDist = d; bestIdx = z; }
+        }
+        if (bestIdx >= 0) {
+          topClusters[bestIdx].push(candidate);
+          assignedIds.add(candidate.id);
+        }
+      }
+    }
+
     return topClusters.map((cluster, idx) => {
       const { name, dominantState, lat, lon } = nameCluster(cluster);
       const avgScore = cluster.reduce((s, c) => s + c.score, 0) / cluster.length;
