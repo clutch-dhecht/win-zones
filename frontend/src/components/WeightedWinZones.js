@@ -291,9 +291,11 @@ const WeightedWinZones = ({
       if (cluster.length >= 3) allClusters.push({ counties: cluster, seedState: state });
     }
 
-    // Rank by total raw opportunity (keeps zones aligned with crop markets)
+    // Rank by seed state's total opportunity (full market potential, not just captured counties)
     const sortedClusters = allClusters.sort((a, b) => {
-      return b.counties.reduce((s, c) => s + c.opportunityRaw, 0) - a.counties.reduce((s, c) => s + c.opportunityRaw, 0);
+      const oppA = stateOppTotals[a.seedState] || 0;
+      const oppB = stateOppTotals[b.seedState] || 0;
+      return oppB - oppA;
     });
 
     const topClusters = sortedClusters.slice(0, 5);
