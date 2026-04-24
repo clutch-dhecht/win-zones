@@ -222,7 +222,9 @@ const WeightedWinZones = ({
       const normOpp = c.opportunityRaw / maxOpp;
       const normAcc = c.accessRaw / maxAcc;
       const normEff = hasEfficiency ? c.efficiencyRaw / maxEff : 0;
-      c.finalScore = ((normOpp * wOpp) + (normAcc * wAcc) + (normEff * wEff)) / wTotal;
+      // Gate: access & efficiency are dampened in counties with little crop presence
+      const oppGate = Math.min(1, normOpp * 3);
+      c.finalScore = ((normOpp * wOpp) + (normAcc * wAcc * oppGate) + (normEff * wEff * oppGate)) / wTotal;
       c.scores = { opportunity: normOpp, access: normAcc, efficiency: normEff };
     });
 
