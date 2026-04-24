@@ -246,8 +246,11 @@ const WeightedWinZones = ({
       .map(([state]) => state);
 
     const used = new Set();
+    const seededStates = new Set();
     const allClusters = [];
     for (const state of rankedStates) {
+      if (seededStates.has(state)) continue;
+
       const stateCounties = stateGroups[state].counties
         .filter(c => !used.has(c.id))
         .sort((a, b) => b.finalScore - a.finalScore);
@@ -256,11 +259,15 @@ const WeightedWinZones = ({
       if (used.has(seed.id)) continue;
       const cluster = [seed];
       used.add(seed.id);
+      seededStates.add(state);
+
+      // Expand — don't cross into states that already seeded a zone
       let changed = true;
       while (changed && cluster.length < maxSize) {
         changed = false;
         for (const cand of scored) {
           if (used.has(cand.id) || cluster.length >= maxSize) continue;
+          if (cand.state !== state && seededStates.has(cand.state)) continue;
           for (const member of cluster) {
             if (quickDist(member.lat, member.lon, cand.lat, cand.lon) < mergeDist) {
               cluster.push(cand); used.add(cand.id); changed = true; break;
@@ -276,7 +283,34 @@ const WeightedWinZones = ({
       return b.reduce((s, c) => s + c.finalScore, 0) - a.reduce((s, c) => s + c.finalScore, 0);
     });
 
-    return sortedClusters.slice(0, 5).map((cluster, idx) => {
+    const topClusters = sortedClusters.slice(0, 5);
+
+    // Backfill: absorb unclaimed counties into nearest zone
+    if (topClusters.length > 0) {
+      const zoneCentroids = topClusters.map(cluster => {
+        let tLat = 0, tLon = 0;
+        cluster.forEach(c => { tLat += c.lat; tLon += c.lon; });
+        return { lat: tLat / cluster.length, lon: tLon / cluster.length };
+      });
+
+      const assignedIds = new Set();
+      topClusters.forEach(cluster => cluster.forEach(c => assignedIds.add(c.id)));
+
+      for (const candidate of scored) {
+        if (assignedIds.has(candidate.id)) continue;
+        let bestIdx = -1, bestDist = 150;
+        for (let z = 0; z < zoneCentroids.length; z++) {
+          const d = quickDist(candidate.lat, candidate.lon, zoneCentroids[z].lat, zoneCentroids[z].lon);
+          if (d < bestDist) { bestDist = d; bestIdx = z; }
+        }
+        if (bestIdx >= 0) {
+          topClusters[bestIdx].push(candidate);
+          assignedIds.add(candidate.id);
+        }
+      }
+    }
+
+    return topClusters.map((cluster, idx) => {
       const { name, lat, lon } = nameCluster(cluster);
       const avgScore = cluster.reduce((s, c) => s + c.finalScore, 0) / cluster.length;
       const avgOpp = cluster.reduce((s, c) => s + c.scores.opportunity, 0) / cluster.length;
