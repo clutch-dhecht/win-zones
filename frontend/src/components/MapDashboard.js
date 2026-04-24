@@ -32,6 +32,7 @@ const MapDashboard = ({ apiUrl }) => {
     constants: {},
   });
   const [showWeightedSettings, setShowWeightedSettings] = useState(false);
+  const [showAdvancedWinZones, setShowAdvancedWinZones] = useState(false);
   const [selectedStates, setSelectedStates] = useState(null); // string[] | null
   const [zoneFocus, setZoneFocus] = useState('regional'); // 'local' | 'regional' | 'territory'
   const [topZones, setTopZones] = useState([]);
@@ -283,109 +284,120 @@ const MapDashboard = ({ apiUrl }) => {
         </div>
       )}
 
-      {/* Weighted Win Zones */}
+      {/* Advanced Win Zone Settings (collapsible) */}
       {hasData && densityData.length > 0 && (
-        <div className="px-4 py-3 border-b border-stone-100">
-          <div className="flex items-center gap-2">
-            <div className="w-3.5 h-3.5 rounded-full flex-shrink-0 bg-gradient-to-r from-cyan-500 to-blue-600" />
-            <span className={`text-sm flex-1 font-medium ${weightedWinEnabled ? 'text-cyan-700' : 'text-stone-400'}`}>Weighted Win Zones</span>
-            <div onClick={(e) => e.stopPropagation()}>
-              <Switch checked={weightedWinEnabled} onCheckedChange={setWeightedWinEnabled} className="scale-75" data-testid="weighted-win-toggle" />
-            </div>
-          </div>
-          {weightedWinEnabled && (
-            <>
-              <p className="text-[10px] text-stone-400 ml-5 mt-1 leading-tight">
-                Opportunity + Access + Efficiency model
-                {activeMarket && activeMarket !== 'custom' && <span className="text-cyan-500 ml-1">({activeMarket})</span>}
-              </p>
-              <button
-                onClick={() => setShowWeightedSettings(v => !v)}
-                className="text-[10px] text-stone-400 hover:text-stone-600 ml-5 mt-1 flex items-center gap-1"
-                data-testid="weighted-settings-toggle"
-              >
-                <Settings2 className="w-3 h-3" />
-                {showWeightedSettings ? 'Hide settings' : 'Advanced settings'}
-              </button>
-            </>
-          )}
-          {weightedWinEnabled && showWeightedSettings && (
-            <div className="ml-5 mt-2 p-2 bg-stone-50 rounded-lg border border-stone-100 space-y-2">
-              <div className="text-[9px] uppercase tracking-wider font-semibold text-stone-400">Weights</div>
-              {[
-                { key: 'opportunity', label: 'Opportunity', color: 'amber' },
-                { key: 'access', label: 'Access', color: 'cyan' },
-                { key: 'efficiency', label: 'Efficiency', color: 'emerald' },
-              ].map(({ key, label, color }) => (
-                <div key={key} className="flex items-center gap-2">
-                  <span className={`text-[10px] text-${color}-600 w-16`}>{label}</span>
-                  <input
-                    type="range" min="0" max="100" step="5"
-                    value={Math.round((weightedSettings.weights[key] || 0) * 100)}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value) / 100;
-                      setWeightedSettings(prev => ({
-                        ...prev,
-                        weights: { ...prev.weights, [key]: val }
-                      }));
-                    }}
-                    className="flex-1 h-1 accent-stone-600"
-                    data-testid={`weight-slider-${key}`}
-                  />
-                  <span className="text-[10px] text-stone-500 w-8 text-right">{Math.round((weightedSettings.weights[key] || 0) * 100)}%</span>
+        <div className="border-b border-stone-100">
+          <button
+            onClick={() => setShowAdvancedWinZones(v => !v)}
+            className="w-full flex items-center gap-2 px-4 py-3 hover:bg-stone-50/50 transition-colors"
+            data-testid="advanced-win-zones-toggle"
+          >
+            {showAdvancedWinZones ? <ChevronDown className="w-3.5 h-3.5 text-stone-400" /> : <ChevronRight className="w-3.5 h-3.5 text-stone-400" />}
+            <span className="text-[10px] tracking-[0.08em] uppercase font-semibold text-stone-400">Advanced Win Zone Settings</span>
+          </button>
+          {showAdvancedWinZones && (
+            <div className="px-4 pb-3">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-3.5 h-3.5 rounded-full flex-shrink-0 bg-gradient-to-r from-cyan-500 to-blue-600" />
+                <span className={`text-sm flex-1 font-medium ${weightedWinEnabled ? 'text-cyan-700' : 'text-stone-400'}`}>Weighted Win Zones</span>
+                <div onClick={(e) => e.stopPropagation()}>
+                  <Switch checked={weightedWinEnabled} onCheckedChange={setWeightedWinEnabled} className="scale-75" data-testid="weighted-win-toggle" />
                 </div>
-              ))}
-              {['wheat', 'corn', 'rice'].includes(activeMarket) && (
+              </div>
+              {weightedWinEnabled && (
                 <>
-                  <div className="text-[9px] uppercase tracking-wider font-semibold text-stone-400 pt-1">Efficiency Constants ({activeMarket})</div>
+                  <p className="text-[10px] text-stone-400 ml-5 mt-1 leading-tight">
+                    Opportunity + Access + Efficiency model
+                    {activeMarket && activeMarket !== 'custom' && <span className="text-cyan-500 ml-1">({activeMarket})</span>}
+                  </p>
+                  <button
+                    onClick={() => setShowWeightedSettings(v => !v)}
+                    className="text-[10px] text-stone-400 hover:text-stone-600 ml-5 mt-1 flex items-center gap-1"
+                    data-testid="weighted-settings-toggle"
+                  >
+                    <Settings2 className="w-3 h-3" />
+                    {showWeightedSettings ? 'Hide settings' : 'Advanced settings'}
+                  </button>
+                </>
+              )}
+              {weightedWinEnabled && showWeightedSettings && (
+                <div className="ml-5 mt-2 p-2 bg-stone-50 rounded-lg border border-stone-100 space-y-2">
+                  <div className="text-[9px] uppercase tracking-wider font-semibold text-stone-400">Weights</div>
                   {[
-                    { key: 'requiredGrowers', label: 'Required Growers', defaults: { wheat: 137, corn: 16, rice: 23 } },
-                    { key: 'impressions', label: 'Impressions', defaults: { wheat: 915, corn: 108, rice: 150 } },
-                  ].map(({ key, label, defaults }) => (
+                    { key: 'opportunity', label: 'Opportunity', color: 'amber' },
+                    { key: 'access', label: 'Access', color: 'cyan' },
+                    { key: 'efficiency', label: 'Efficiency', color: 'emerald' },
+                  ].map(({ key, label, color }) => (
                     <div key={key} className="flex items-center gap-2">
-                      <span className="text-[10px] text-stone-500 w-24">{label}</span>
+                      <span className={`text-[10px] text-${color}-600 w-16`}>{label}</span>
                       <input
-                        type="number"
-                        value={weightedSettings.constants[activeMarket]?.[key] ?? defaults[activeMarket] ?? ''}
+                        type="range" min="0" max="100" step="5"
+                        value={Math.round((weightedSettings.weights[key] || 0) * 100)}
                         onChange={(e) => {
-                          const val = parseInt(e.target.value) || 0;
+                          const val = parseInt(e.target.value) / 100;
                           setWeightedSettings(prev => ({
                             ...prev,
-                            constants: {
-                              ...prev.constants,
-                              [activeMarket]: { ...prev.constants[activeMarket], [key]: val }
-                            }
+                            weights: { ...prev.weights, [key]: val }
                           }));
                         }}
-                        className="flex-1 text-[10px] px-2 py-0.5 border border-stone-200 rounded bg-white text-stone-700 w-16"
-                        data-testid={`efficiency-${key}`}
+                        className="flex-1 h-1 accent-stone-600"
+                        data-testid={`weight-slider-${key}`}
                       />
+                      <span className="text-[10px] text-stone-500 w-8 text-right">{Math.round((weightedSettings.weights[key] || 0) * 100)}%</span>
                     </div>
                   ))}
-                </>
+                  {['wheat', 'corn', 'rice'].includes(activeMarket) && (
+                    <>
+                      <div className="text-[9px] uppercase tracking-wider font-semibold text-stone-400 pt-1">Efficiency Constants ({activeMarket})</div>
+                      {[
+                        { key: 'requiredGrowers', label: 'Required Growers', defaults: { wheat: 137, corn: 16, rice: 23 } },
+                        { key: 'impressions', label: 'Impressions', defaults: { wheat: 915, corn: 108, rice: 150 } },
+                      ].map(({ key, label, defaults }) => (
+                        <div key={key} className="flex items-center gap-2">
+                          <span className="text-[10px] text-stone-500 w-24">{label}</span>
+                          <input
+                            type="number"
+                            value={weightedSettings.constants[activeMarket]?.[key] ?? defaults[activeMarket] ?? ''}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value) || 0;
+                              setWeightedSettings(prev => ({
+                                ...prev,
+                                constants: {
+                                  ...prev.constants,
+                                  [activeMarket]: { ...prev.constants[activeMarket], [key]: val }
+                                }
+                              }));
+                            }}
+                            className="flex-1 text-[10px] px-2 py-0.5 border border-stone-200 rounded bg-white text-stone-700 w-16"
+                            data-testid={`efficiency-${key}`}
+                          />
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
+              {/* Weighted Win Zone Cards */}
+              {weightedWinEnabled && enrichedFeatures.length > 0 && (
+                <div className="mt-3">
+                  <label className="text-[10px] tracking-[0.08em] uppercase font-semibold text-stone-400 block mb-2">
+                    Weighted Zones {activeMarket && activeMarket !== 'custom' ? `(${activeMarket})` : ''}
+                  </label>
+                  <WeightedWinZones
+                    enrichedFeatures={enrichedFeatures}
+                    activeMarket={activeMarket}
+                    selectedStates={selectedStates}
+                    zoneFocus={zoneFocus}
+                    locationData={locationData}
+                    modelWeights={weightedSettings.weights}
+                    efficiencyConstants={weightedSettings.constants}
+                    onZoomToZone={handleZoomToZone}
+                    onZonesComputed={setWeightedWinZones}
+                  />
+                </div>
               )}
             </div>
           )}
-        </div>
-      )}
-
-      {/* Weighted Win Zone Cards */}
-      {hasData && weightedWinEnabled && enrichedFeatures.length > 0 && (
-        <div className="px-4 py-3 border-b border-stone-100">
-          <label className="text-[10px] tracking-[0.08em] uppercase font-semibold text-stone-400 block mb-2">
-            Weighted Zones {activeMarket && activeMarket !== 'custom' ? `(${activeMarket})` : ''}
-          </label>
-          <WeightedWinZones
-            enrichedFeatures={enrichedFeatures}
-            activeMarket={activeMarket}
-            selectedStates={selectedStates}
-            zoneFocus={zoneFocus}
-            locationData={locationData}
-            modelWeights={weightedSettings.weights}
-            efficiencyConstants={weightedSettings.constants}
-            onZoomToZone={handleZoomToZone}
-            onZonesComputed={setWeightedWinZones}
-          />
         </div>
       )}
 
