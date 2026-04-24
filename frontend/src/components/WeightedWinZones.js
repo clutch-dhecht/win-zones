@@ -246,15 +246,16 @@ const WeightedWinZones = ({
     };
     const { mergeDist, maxSize } = FOCUS_SETTINGS[zoneFocus] || FOCUS_SETTINGS.regional;
 
-    // Group by state, rank by total finalScore
+    // Group by state, rank by total raw opportunity (not finalScore)
     const stateGroups = {};
     scored.forEach(c => {
-      if (!stateGroups[c.state]) stateGroups[c.state] = { total: 0, counties: [] };
+      if (!stateGroups[c.state]) stateGroups[c.state] = { total: 0, oppTotal: 0, counties: [] };
       stateGroups[c.state].total += c.finalScore;
+      stateGroups[c.state].oppTotal += c.opportunityRaw;
       stateGroups[c.state].counties.push(c);
     });
     const rankedStates = Object.entries(stateGroups)
-      .sort((a, b) => b[1].total - a[1].total)
+      .sort((a, b) => b[1].oppTotal - a[1].oppTotal)
       .map(([state]) => state);
 
     const used = new Set();
@@ -287,43 +288,49 @@ const WeightedWinZones = ({
           }
         }
       }
-      if (cluster.length >= 3) allClusters.push(cluster);
+      if (cluster.length >= 3) allClusters.push({ counties: cluster, seedState: state });
     }
 
-    // Rank by total finalScore
+    // Rank by total raw opportunity (keeps zones aligned with crop markets)
     const sortedClusters = allClusters.sort((a, b) => {
-      return b.reduce((s, c) => s + c.finalScore, 0) - a.reduce((s, c) => s + c.finalScore, 0);
+      return b.counties.reduce((s, c) => s + c.opportunityRaw, 0) - a.counties.reduce((s, c) => s + c.opportunityRaw, 0);
     });
 
     const topClusters = sortedClusters.slice(0, 5);
 
     // Backfill: absorb unclaimed counties into nearest zone
+    // Only absorb into zones that already contain counties from the candidate's state
     if (topClusters.length > 0) {
-      const zoneCentroids = topClusters.map(cluster => {
+      const zoneCentroids = topClusters.map(cl => {
         let tLat = 0, tLon = 0;
-        cluster.forEach(c => { tLat += c.lat; tLon += c.lon; });
-        return { lat: tLat / cluster.length, lon: tLon / cluster.length };
+        cl.counties.forEach(c => { tLat += c.lat; tLon += c.lon; });
+        return { lat: tLat / cl.counties.length, lon: tLon / cl.counties.length };
       });
 
+      const zoneStates = topClusters.map(cl => new Set(cl.counties.map(c => c.state)));
       const assignedIds = new Set();
-      topClusters.forEach(cluster => cluster.forEach(c => assignedIds.add(c.id)));
+      topClusters.forEach(cl => cl.counties.forEach(c => assignedIds.add(c.id)));
 
       for (const candidate of scored) {
         if (assignedIds.has(candidate.id)) continue;
         let bestIdx = -1, bestDist = 150;
         for (let z = 0; z < zoneCentroids.length; z++) {
+          if (!zoneStates[z].has(candidate.state)) continue;
           const d = quickDist(candidate.lat, candidate.lon, zoneCentroids[z].lat, zoneCentroids[z].lon);
           if (d < bestDist) { bestDist = d; bestIdx = z; }
         }
         if (bestIdx >= 0) {
-          topClusters[bestIdx].push(candidate);
+          topClusters[bestIdx].counties.push(candidate);
           assignedIds.add(candidate.id);
         }
       }
     }
 
-    return topClusters.map((cluster, idx) => {
-      const { name, lat, lon } = nameCluster(cluster);
+    return topClusters.map((cl, idx) => {
+      const cluster = cl.counties;
+      const { lat, lon } = nameCluster(cluster);
+      // Name after seed state to prevent dilution by border counties
+      const name = cl.seedState;
       const avgScore = cluster.reduce((s, c) => s + c.finalScore, 0) / cluster.length;
       const avgOpp = cluster.reduce((s, c) => s + c.scores.opportunity, 0) / cluster.length;
       const avgAcc = cluster.reduce((s, c) => s + c.scores.access, 0) / cluster.length;
