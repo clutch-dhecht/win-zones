@@ -250,27 +250,29 @@ const LayerControls = ({ allLayers, activeLayers, onToggle, radiusSettings, onRa
 
   return (
     <div data-testid="layer-controls">
-      {/* Ungrouped point layers */}
-      {ungroupedPointLayers.length > 0 && (
-        <LayerGroup
-          title="Point Layers"
-          layers={ungroupedPointLayers}
-          activeLayers={activeLayers}
-          onToggle={onToggle}
-          layerColors={layerColors}
-          onColorChange={onColorChange}
-          radiusSettings={radiusSettings}
-          onRadiusChange={onRadiusChange}
-        />
-      )}
-
-      {/* Grouped sub-layers (Fumigation, FSS Milling, Terminals) */}
-      {activeGroups.length > 0 && (
+      {/* All point layers — ungrouped + grouped sub-layers together */}
+      {(ungroupedPointLayers.length > 0 || activeGroups.length > 0) && (
         <div className="mb-2">
           <div className="flex items-center gap-1.5 py-1">
-            <span className="text-[10px] uppercase tracking-wider font-semibold text-stone-400">Industry Layers</span>
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-stone-400">Point Layers</span>
           </div>
           <div className="ml-1">
+            {ungroupedPointLayers.map(layer => {
+              const config = getLayerConfig(layer);
+              return (
+                <LayerItem
+                  key={layer}
+                  layer={layer}
+                  isActive={activeLayers[layer] || false}
+                  onToggle={onToggle}
+                  color={layerColors[layer] || config.color}
+                  onColorChange={onColorChange}
+                  radiusSetting={radiusSettings[layer]}
+                  onRadiusChange={onRadiusChange}
+                  hasRadius={getRadiusLayers().includes(layer)}
+                />
+              );
+            })}
             {activeGroups.map(([key, group]) => (
               <SubLayerGroup
                 key={key}
