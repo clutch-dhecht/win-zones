@@ -22,7 +22,7 @@ const MARKET_PRESETS = {
     layers: [
       'FSS Grain', 'FSS Flour Mills', 'FSS Specialty Mills', 'FSS Mix Plants',
       'Terminals SRW Wheat', 'Terminals HRW Wheat', 'Terminals HRS Wheat',
-      'CHS Grain', 'Grain Elevators', 'CLS Customer Head Sheds', 'Grain Fumigation',
+      'CHS Grain', 'MKC Grain', 'Grain Elevators', 'CLS Customer Head Sheds', 'Grain Fumigation',
       '1000+ Wheat Growers', 'Wheat Acres',
     ],
   },
@@ -32,7 +32,7 @@ const MARKET_PRESETS = {
     layers: [
       'FSS Grain', 'FSS Flour Mills', 'FSS Specialty Mills', 'FSS Mix Plants',
       'Terminals Rough Rice',
-      'CHS Grain', 'Grain Elevators', 'CLS Customer Head Sheds', 'Grain Fumigation',
+      'CHS Grain', 'MKC Grain', 'Grain Elevators', 'CLS Customer Head Sheds', 'Grain Fumigation',
       '1000+ Rice Growers', 'Rice Acres',
     ],
   },
@@ -42,7 +42,7 @@ const MARKET_PRESETS = {
     layers: [
       'FSS Grain', 'FSS Specialty Mills', 'FSS Mix Plants',
       'Terminals Corn & Soybean',
-      'CHS Grain', 'Grain Elevators', 'CLS Customer Head Sheds', 'Grain Fumigation',
+      'CHS Grain', 'MKC Grain', 'Grain Elevators', 'CLS Customer Head Sheds', 'Grain Fumigation',
       '1000+ Corn Growers', 'Corn Acres',
     ],
   },
