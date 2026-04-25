@@ -56,7 +56,7 @@ const MARKET_PRESETS = {
     ],
   },
   pest: {
-    label: 'Pest Control',
+    label: 'Alternative',
     icon: 'pest',
     layers: [
       'CLS Customer Head Sheds', 'Grain Fumigation', 'Pest Control',
