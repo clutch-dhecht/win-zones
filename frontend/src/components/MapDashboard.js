@@ -433,7 +433,7 @@ const MapDashboard = ({ apiUrl }) => {
     <div className="h-screen w-full flex flex-col bg-stone-100 overflow-hidden">
       {/* Mobile top bar */}
       <div className="md:hidden flex items-center justify-between px-4 py-2 bg-white border-b border-stone-200 z-20">
-        <h1 className="text-lg font-bold text-stone-900" style={{ fontFamily: 'Manrope, sans-serif' }}>CLS Win Zones</h1>
+        <h1 className="text-lg font-bold" style={{ fontFamily: 'Manrope, sans-serif', color: '#D15E13' }}>CLS Win Zones</h1>
         <button onClick={() => setMobileOpen(!mobileOpen)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-800 text-white text-xs font-medium" data-testid="mobile-menu-toggle">
           {mobileOpen ? 'Close' : 'Menu'}
           {activeMarket && activeMarket !== 'custom' && !mobileOpen && <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px] capitalize">{activeMarket}</span>}
@@ -452,7 +452,7 @@ const MapDashboard = ({ apiUrl }) => {
         {/* Desktop sidebar */}
         <div className="hidden md:flex md:w-72 lg:w-80 flex-shrink-0 border-r border-stone-200 bg-white h-full flex-col z-10 shadow-sm">
           <div className="px-5 pt-5 pb-4 border-b border-stone-100">
-            <h1 className="text-2xl tracking-tight font-bold text-stone-900" style={{ fontFamily: 'Manrope, sans-serif' }}>CLS Win Zones</h1>
+            <h1 className="text-2xl tracking-tight font-bold" style={{ fontFamily: 'Manrope, sans-serif', color: '#D15E13' }}>CLS Win Zones</h1>
             <p className="text-xs text-stone-400 mt-1" style={{ fontFamily: 'IBM Plex Sans, sans-serif' }}>Market opportunity analysis</p>
           </div>
           <div className="flex-1 overflow-y-auto">{sidebarContent}</div>

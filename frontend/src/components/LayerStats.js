@@ -65,10 +65,10 @@ const LayerStats = ({ activeLayers, pointData, locationData, densityData }) => {
           className="bg-stone-50 border border-stone-200 rounded-lg px-2 py-2 text-center"
           data-testid={`stat-${layer}`}
         >
-          <div className="text-lg font-bold text-stone-900 leading-tight tracking-tight" style={{ fontFamily: 'Manrope, sans-serif' }}>
+          <div className="text-lg font-bold leading-tight tracking-tight" style={{ fontFamily: 'Manrope, sans-serif', color: '#D15E13' }}>
             {formatStat(value)}
           </div>
-          <div className="text-[9px] text-stone-400 mt-0.5 leading-tight">
+          <div className="text-[9px] text-stone-600 mt-0.5 leading-tight font-medium">
             {layer}
           </div>
         </div>
