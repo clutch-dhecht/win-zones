@@ -78,6 +78,7 @@ async def seed_all(db):
         await _seed_fss_milling(db, existing_set)
         await _seed_grain_terminals(db, existing_set)
         await _seed_chs(db, existing_set)
+        await _seed_mkc(db, existing_set)
         await _seed_hogs(db)
 
         logger.info("Seed check complete")
@@ -192,6 +193,46 @@ async def _seed_grain_terminals(db, existing_set):
     if not xlsx.exists():
         return
     logger.info("Seeding Grain Terminals...")
+
+async def _seed_mkc(db, existing_set):
+    if 'MKC Grain' in existing_set:
+        return
+    xlsx = SEED_DIR / 'mkc_locations.xlsx'
+    if not xlsx.exists():
+        return
+    logger.info("Seeding MKC Locations...")
+    df = pd.read_excel(xlsx)
+    df = df[df['Location Name'].notna()].head(50)
+    agro_col = 'Agromy' if 'Agromy' in df.columns else 'Agronomy'
+    points = []
+    for _, row in df.iterrows():
+        name = str(row['Location Name']).strip()
+        city = str(row['City']).strip() if pd.notna(row['City']) else ''
+        state_raw = str(row['State']).strip() if pd.notna(row['State']) else ''
+        address = str(row.get('Street Address', '')).strip() if pd.notna(row.get('Street Address', '')) else ''
+        is_grain = str(row.get('Grain', '')).strip().lower() == 'yes'
+        is_agro = str(row.get(agro_col, '')).strip().lower() == 'yes'
+        if not city or not state_raw:
+            continue
+        state_full = _to_state_full(state_raw)
+        geo = _geocode(city, state_full)
+        if not geo:
+            continue
+        layers = []
+        if is_grain:
+            layers.append('MKC Grain')
+        if is_agro:
+            layers.append('MKC Agronomy')
+        if not layers:
+            layers.append('MKC Grain')
+        for layer in layers:
+            points.append({'name': name, 'layer': layer, 'city': city.title(), 'state': state_full,
+                           'address': address, 'lat': geo['lat'], 'lon': geo['lon']})
+    if points:
+        await db.location_points.insert_many(points)
+    logger.info(f"Seeded {len(points)} MKC points")
+
+
     df = pd.read_excel(xlsx)
     points = []
     for _, row in df.iterrows():
@@ -258,6 +299,7 @@ async def _seed_chs(db, existing_set):
 
 
 async def _seed_hogs(db):
+    """Update 1000+ Hogs density data if current count is too low."""
     """Update 1000+ Hogs density data if current count is too low."""
     count = await db.density_data.count_documents({'layers.1000+ Hogs': {'$exists': True, '$gt': 0}})
     if count >= 800:

@@ -167,6 +167,24 @@ export const LAYER_CONFIG = {
     order: 31
   },
 
+  // --- MKC LOCATIONS (sub-layers by Grain / Agronomy) ---
+  "MKC Grain": {
+    type: "point",
+    group: "mkc",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#0284C7",
+    markerColor: "#0284C7",
+    order: 32
+  },
+  "MKC Agronomy": {
+    type: "point",
+    group: "mkc",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#6366F1",
+    markerColor: "#6366F1",
+    order: 33
+  },
+
   // --- DENSITY LAYERS (County-level aggregations) ---
   "1000+ Wheat Growers": {
     type: "density",
@@ -245,6 +263,10 @@ export const LAYER_GROUPS = {
   chs: {
     label: 'CHS Locations',
     layers: ['CHS Grain', 'CHS Agronomy'],
+  },
+  mkc: {
+    label: 'MKC Locations',
+    layers: ['MKC Grain', 'MKC Agronomy'],
   },
 };
 
