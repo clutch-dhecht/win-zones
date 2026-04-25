@@ -284,8 +284,8 @@ const MapDashboard = ({ apiUrl }) => {
         </div>
       )}
 
-      {/* Advanced Win Zone Settings (collapsible) */}
-      {hasData && densityData.length > 0 && (
+      {/* Advanced Win Zone Settings — hidden for now, code preserved */}
+      {false && hasData && densityData.length > 0 && (
         <div className="border-b border-stone-100">
           <button
             onClick={() => setShowAdvancedWinZones(v => !v)}
