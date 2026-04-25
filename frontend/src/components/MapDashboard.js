@@ -145,8 +145,13 @@ const MapDashboard = ({ apiUrl }) => {
         if (dLoaded.length > 0) { setDensityData(dLoaded); const s = new Set(); dLoaded.forEach(d => Object.keys(d.layers).forEach(l => s.add(l))); combined = [...combined, ...s]; }
         const unique = [...new Set(combined)];
         setAllLayers(unique);
-        const { newActive, newRadius } = initLayerSettings(unique, {}, {});
+        // Default to Wheat market view on initial load
+        const wheatPreset = getMarketPreset('wheat');
+        const newActive = {};
+        unique.forEach(l => { newActive[l] = false; });
+        if (wheatPreset) wheatPreset.layers.forEach(l => { if (unique.includes(l)) newActive[l] = true; });
         setActiveLayers(newActive);
+        const { newRadius } = initLayerSettings(unique, newActive, {});
         setRadiusSettings(newRadius);
       } catch (e) { console.error(e); }
     };
