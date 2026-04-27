@@ -34,14 +34,14 @@ export const SALES_REPS = [
     id: 'tyler',
     name: 'Tyler Pierson',
     color: '#EAB308',
-    states: ['South Dakota', 'Nebraska', 'Iowa', 'Minnesota', 'Colorado'],
+    states: ['South Dakota', 'Nebraska', 'Iowa', 'Colorado'],
     partialStates: {},
   },
   {
     id: 'natalie',
     name: 'Natalie Tokach',
     color: '#7C3AED',
-    states: ['North Dakota'],
+    states: ['North Dakota', 'Minnesota'],
     partialStates: {},
   },
 ];
