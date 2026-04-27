@@ -298,9 +298,6 @@ const WinZoneCards = ({
 
     // ─── PER REP MODE ───
     if (perRep) {
-      // Tighter merge for per-rep (stays contiguous within large states like TX)
-      const repMergeDist = Math.min(mergeDist, 60);
-
       // Group candidates by sales rep territory
       const repGroups = {};
       candidates.forEach(c => {
@@ -310,38 +307,82 @@ const WinZoneCards = ({
         repGroups[rep.id].counties.push(c);
       });
 
-      // For each rep, find the best cluster within their territory
+      // For each rep, build a zone that captures 50%+ of their territory's market
       const repClusters = [];
       Object.values(repGroups).forEach(({ rep, counties }) => {
         if (counties.length < 3) return;
-        // Sort by raw density, seed from top county
+
+        // Sort by raw density descending
         counties.sort((a, b) => b.rawDensity - a.rawDensity);
-        const seed = counties[0];
-        const cluster = [seed];
-        const used = new Set([seed.id]);
-        let changed = true;
-        while (changed && cluster.length < maxSize) {
-          changed = false;
-          for (const cand of counties) {
-            if (used.has(cand.id) || cluster.length >= maxSize) continue;
-            for (const member of cluster) {
-              if (quickDist(member.lat, member.lon, cand.lat, cand.lon) < repMergeDist) {
-                cluster.push(cand); used.add(cand.id); changed = true; break;
-              }
+
+        // Rep's total market = sum of all density in their territory
+        const repTotal = counties.reduce((s, c) => s + c.rawDensity, 0);
+        const targetDensity = repTotal * 0.5; // aim for 50% coverage
+
+        // Anchor: find the best cluster seed by checking top 10 counties
+        // and picking the one with the most high-density neighbors within 100mi
+        const top10 = counties.slice(0, 10);
+        let bestAnchor = top10[0];
+        let bestNeighborDensity = 0;
+        for (const candidate of top10) {
+          let neighborDensity = 0;
+          for (const other of counties) {
+            if (other.id === candidate.id) continue;
+            if (quickDist(candidate.lat, candidate.lon, other.lat, other.lon) < 100) {
+              neighborDensity += other.rawDensity;
             }
           }
+          if (neighborDensity > bestNeighborDensity) {
+            bestNeighborDensity = neighborDensity;
+            bestAnchor = candidate;
+          }
         }
-        repClusters.push({ cluster, rep });
+
+        // Grow from anchor: greedily add closest high-density counties
+        // until 50% market coverage or 60 counties
+        const cluster = [bestAnchor];
+        const used = new Set([bestAnchor.id]);
+        let clusterDensity = bestAnchor.rawDensity;
+
+        while (clusterDensity < targetDensity && cluster.length < maxSize) {
+          // Find the best candidate: highest density that's within 100mi of any cluster member
+          let bestNext = null;
+          let bestNextDensity = 0;
+          for (const cand of counties) {
+            if (used.has(cand.id)) continue;
+            if (cand.rawDensity <= bestNextDensity) continue;
+            // Check connectivity — within 100mi of any cluster member
+            let connected = false;
+            for (const member of cluster) {
+              if (quickDist(member.lat, member.lon, cand.lat, cand.lon) < 100) {
+                connected = true; break;
+              }
+            }
+            if (connected) {
+              bestNext = cand;
+              bestNextDensity = cand.rawDensity;
+            }
+          }
+          if (!bestNext) break; // no more connected candidates
+          cluster.push(bestNext);
+          used.add(bestNext.id);
+          clusterDensity += bestNext.rawDensity;
+        }
+
+        const repPct = repTotal > 0 ? Math.round((clusterDensity / repTotal) * 100) : 0;
+        repClusters.push({ cluster, rep, repTotal, clusterDensity, repPct });
       });
 
-      // Sort by cluster density
-      repClusters.sort((a, b) => {
-        return b.cluster.reduce((s, c) => s + c.rawDensity, 0) - a.cluster.reduce((s, c) => s + c.rawDensity, 0);
-      });
+      // Sort by cluster density captured
+      repClusters.sort((a, b) => b.clusterDensity - a.clusterDensity);
 
-      // Convert to zone objects (reuse the same format as normal mode)
+      // Convert to zone objects
       const totalMarketDensity = candidates.reduce((s, c) => s + c.rawDensity, 0);
-      return repClusters.slice(0, 6).map((item, idx) => buildZoneFromCluster(item.cluster, idx, totalMarketDensity, activeLayers, locationData, pointData, item.rep.name));
+      return repClusters.slice(0, 6).map((item, idx) => {
+        const zone = buildZoneFromCluster(item.cluster, idx, totalMarketDensity, activeLayers, locationData, pointData, item.rep.name);
+        zone.repPct = item.repPct;
+        return zone;
+      });
     }
 
     // ─── NORMAL STATE-SEEDED CLUSTERING ───
