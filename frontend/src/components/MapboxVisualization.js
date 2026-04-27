@@ -4,7 +4,6 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import circle from '@turf/circle';
 import { getLayerConfig } from '../config/layerConfig';
 import { SALES_REPS, getRepForCounty } from '../config/territoryConfig';
-import turfUnion from '@turf/union';
 
 const MAPBOX_TOKEN = process.env.REACT_APP_MAPBOX_TOKEN;
 const COUNTIES_SOURCE = 'https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json';
@@ -116,67 +115,36 @@ const MapboxVisualization = ({
         // Collect all assigned states
         const assignedStates = new Set();
         SALES_REPS.forEach(rep => rep.states.forEach(s => assignedStates.add(s)));
-        SALES_REPS.forEach(rep => Object.keys(rep.partialStates).forEach(s => assignedStates.add(s)));
 
-        // Group state features by rep
-        const repPolygons = {};
+        const features = [];
+        const unassignedCoords = [];
+
+        // For each rep, collect their state features and color them
         SALES_REPS.forEach(rep => {
           if (visibleReps[rep.id] === false) return;
-          repPolygons[rep.id] = { color: rep.color, coords: [] };
-        });
-        const unassignedCoords = [];
-        statesGeo.features.forEach(f => {
-          const stateName = f.properties.name;
-          let assigned = false;
-          SALES_REPS.forEach(rep => {
-            if (visibleReps[rep.id] === false) return;
-            if (rep.states.includes(stateName)) {
-              assigned = true;
-              if (f.geometry.type === 'Polygon') {
-                repPolygons[rep.id].coords.push(f.geometry.coordinates);
-              } else if (f.geometry.type === 'MultiPolygon') {
-                f.geometry.coordinates.forEach(poly => repPolygons[rep.id].coords.push(poly));
-              }
+          rep.states.forEach(stateName => {
+            const stateFeature = statesGeo.features.find(f => f.properties.name === stateName);
+            if (stateFeature) {
+              features.push({
+                ...stateFeature,
+                properties: { ...stateFeature.properties, rep_id: rep.id, rep_color: rep.color, is_unassigned: false }
+              });
             }
           });
-          if (!assigned && !assignedStates.has(stateName)) {
-            if (f.geometry.type === 'Polygon') {
-              unassignedCoords.push(f.geometry.coordinates);
-            } else if (f.geometry.type === 'MultiPolygon') {
-              f.geometry.coordinates.forEach(poly => unassignedCoords.push(poly));
-            }
+        });
+
+        // Unassigned states
+        statesGeo.features.forEach(f => {
+          if (!assignedStates.has(f.properties.name)) {
+            unassignedCoords.push({
+              ...f,
+              properties: { ...f.properties, rep_id: 'unassigned', rep_color: '#D4D4D4', is_unassigned: true }
+            });
           }
         });
-        // Create one dissolved polygon per rep using turf union
-        const features = [];
-        Object.entries(repPolygons)
-          .filter(([, v]) => v.coords.length > 0)
-          .forEach(([repId, { color, coords }]) => {
-            try {
-              // Start with first polygon, union the rest
-              let merged = { type: 'Feature', properties: {}, geometry: { type: coords[0].length > 1 && Array.isArray(coords[0][0][0]) ? 'MultiPolygon' : 'Polygon', coordinates: coords[0] } };
-              // Wrap each coord set as a Feature for union
-              for (let i = 1; i < coords.length; i++) {
-                const next = { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: coords[i] } };
-                try {
-                  const result = turfUnion(merged, next);
-                  if (result) merged = result;
-                } catch (e) { /* skip bad geometry */ }
-              }
-              features.push({
-                ...merged,
-                properties: { rep_id: repId, rep_color: color, is_unassigned: false }
-              });
-            } catch (e) { /* skip if union fails */ }
-          });
-        if (unassignedCoords.length > 0) {
-          features.push({
-            type: 'Feature',
-            properties: { rep_id: 'unassigned', rep_color: '#D4D4D4', is_unassigned: true },
-            geometry: { type: 'MultiPolygon', coordinates: unassignedCoords }
-          });
-        }
-        setTerritoryBorderGeoJSON(features.length > 0 ? { type: 'FeatureCollection', features } : null);
+
+        const allFeatures = [...features, ...unassignedCoords];
+        setTerritoryBorderGeoJSON(allFeatures.length > 0 ? { type: 'FeatureCollection', features: allFeatures } : null);
       })
       .catch(() => setTerritoryBorderGeoJSON(null));
   }, [territoriesEnabled, visibleReps]);
@@ -794,7 +762,7 @@ const MapboxVisualization = ({
               </Source>
             )}
 
-            {/* Territory perimeter border — rendered from state GeoJSON, grouped per rep into MultiPolygon */}
+            {/* Territory perimeter border — state-level, colored per rep */}
             {territoryBorderGeoJSON && (
               <Source id="territory-border-dissolved" type="geojson" data={territoryBorderGeoJSON}>
                 <Layer
@@ -812,8 +780,8 @@ const MapboxVisualization = ({
                   filter={['==', ['get', 'is_unassigned'], false]}
                   paint={{
                     'line-color': ['get', 'rep_color'],
-                    'line-width': 3.5,
-                    'line-opacity': 0.85
+                    'line-width': 3,
+                    'line-opacity': 0.8
                   }}
                 />
               </Source>

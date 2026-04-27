@@ -1,34 +1,34 @@
 // Sales Rep Territory Configuration
-// Each rep has assigned states. Montana is split at latitude 47.5° (county-level)
+// Based on the Wheat Sales Team Territory Map
 
 export const SALES_REPS = [
   {
     id: 'laramie',
     name: 'Laramie Wiginton',
     color: '#DC2626',
-    states: ['Wyoming'],
-    partialStates: { Montana: { rule: 'south', latThreshold: 47.5 } },
+    states: ['Wyoming', 'Montana', 'Idaho'],
+    partialStates: {},
   },
   {
     id: 'sid',
     name: 'Sid Chambers',
     color: '#16A34A',
-    states: ['New Mexico', 'Texas'],
+    states: ['New Mexico', 'Texas', 'Oklahoma'],
     partialStates: {},
   },
   {
     id: 'miya',
     name: 'Miya Butler',
     color: '#2563EB',
-    states: ['Oklahoma', 'Kansas', 'Missouri'],
+    states: ['Kansas', 'Missouri'],
     partialStates: {},
   },
   {
     id: 'matthew',
     name: 'Matthew Horlacher',
     color: '#EA580C',
-    states: ['Arizona', 'California', 'Oregon', 'Washington', 'Idaho'],
-    partialStates: { Montana: { rule: 'north', latThreshold: 47.5 } },
+    states: ['Washington', 'Oregon', 'California'],
+    partialStates: {},
   },
   {
     id: 'tyler',
@@ -54,13 +54,13 @@ export const getRepForState = (stateName) => {
   return null;
 };
 
-// Get the rep for a county (handles Montana split)
+// Get the rep for a county (handles partial states if any)
 export const getRepForCounty = (stateName, countyLat) => {
-  // First check full-state ownership
+  // Check full-state ownership
   const fullRep = getRepForState(stateName);
   if (fullRep) return fullRep;
 
-  // Check partial states (Montana split)
+  // Check partial states
   for (const rep of SALES_REPS) {
     const partial = rep.partialStates[stateName];
     if (partial) {
