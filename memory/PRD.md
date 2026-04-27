@@ -1,7 +1,7 @@
 # Territory Atlas (CLS Win Zones) - Product Requirements Document
 
 ## Problem Statement
-Interactive map visualization app for sales territory mapping with dual Win Zone analysis systems, market presets, density choropleth, point clustering, and advanced weighted scoring model.
+Interactive map visualization for sales territory mapping with dual Win Zone systems, market presets, density choropleth, point clustering, weighted scoring model, and sales rep territory overlays.
 
 ## Tech Stack
 - **Frontend**: React 19, TailwindCSS, react-map-gl (Mapbox GL JS), @turf/circle, Shadcn UI
@@ -11,31 +11,38 @@ Interactive map visualization app for sales territory mapping with dual Win Zone
 
 ## What's Implemented
 
-### Core Features
-- [x] Market Views: Wheat, Rice, Corn, Hogs, Pest Control (with full layer matrix)
-- [x] State filter, Layer Stats, Mobile responsive
-- [x] Per-layer density choropleth (99.1% FIPS match)
-- [x] Individual location points (40k+) with loose clustering
-- [x] Data upload: CSV + XLSX support
+### Core
+- [x] Market Views: Wheat, Rice, Corn, Hogs, Alternative (default: Wheat on load)
+- [x] State filter, Layer Stats (branded #D15E13), Mobile responsive
+- [x] Per-layer density choropleth, loose clustering (radius 18, maxZoom 11)
+- [x] 40k+ location points with clustering
+
+### Sales Rep Territories (NEW)
+- [x] Master toggle shows colored state fills + borders for 6 reps
+- [x] Sub-filter: individual rep eye toggles + zoom-to-territory crosshair
+- [x] Montana split at latitude 47.5° (south = Laramie, north = Matthew)
+- [x] Reps: Laramie (WY+south MT), Sid (TX+NM), Miya (OK+KS+MO), Matthew (WA+OR+ID+CA+NV+UT+AZ+north MT), Tyler (SD+NE+IA+MN+CO), Natalie (ND)
+
+### Win Zones
+- [x] Market / Coverage / Opportunity modes (green/purple/orange)
+- [x] State-seeded clustering, Zone Focus (Local/Regional/Territory)
+- [x] **Per Rep mode**: One best zone per sales rep (6 zones named after reps)
+- [x] Backfill pass, one-zone-per-state rule, max 60 counties
+- [x] Top 10 counties per zone with people-to-reach breakdown
+
+### Weighted Win Zones (hidden, code preserved)
+- [x] 3-factor model: Opportunity (60%) + Access (30%) + Efficiency (10%)
+- [x] Opportunity gate, state-total blend, P90 normalization
+- [x] Advanced Settings panel with weight sliders + efficiency constants
 
 ### Data Layers
-- Point: CLS Customer Head Sheds (1,047), Grain Elevators (4,538), Feed Mfrs, Feed Stores, Pest Control
-- Industry: Grain Fumigation (59), FSS Milling (4 sub-layers, 1,633), Grain Terminals (8 commodity sub-layers, 206), CHS Locations (Grain 151 + Agronomy 104)
-- Density: Wheat/Corn/Rice Acres, 1000+ Growers (3 types), 1000+ Hogs, Farms w/ Grain Storage
+- Point: CLS Head Sheds (1,047), Grain Elevators (4,538), Feed Mfrs, Feed Stores, Pest Control, Grain Fumigation (59)
+- Industry groups: FSS Milling (4 sub-layers), Grain Terminals (8 sub-layers), CHS Locations (Grain+Agronomy), MKC Locations (Grain+Agronomy)
+- Density: Wheat/Corn/Rice Acres, 1000+ Growers, 1000+ Hogs, Farms w/ Grain Storage
 
-### Win Zones (Original)
-- [x] Market / Coverage / Opportunity modes
-- [x] State-seeded clustering, Zone Focus (Local/Regional/Territory)
-- [x] Top 5 zones, 3 shown by default, eye toggles, Top 10 counties per zone
-
-### Weighted Win Zones (NEW)
-- [x] Independent 3-factor scoring model: Opportunity (40%) + Access (40%) + Efficiency (20%)
-- [x] Opportunity: Crop acreage normalized per county
-- [x] Access: Weighted point counts with crop-relevant filtering + synergy multipliers (CLS+Growers=1.5x, Elevators+Fumigation=1.3x, FSS+CHS=1.2x)
-- [x] Efficiency: 1/(impressions/access_points) for Wheat/Corn/Rice; gracefully excluded for Hogs/Pest
-- [x] Advanced Settings: Weight sliders + editable efficiency constants (session-persisted)
-- [x] Separate cyan map outlines, independent from original red/orange zones
-- [x] Can run simultaneously with original Win Zones
+### Startup Seed
+- All imported data auto-seeds from `/backend/seed_data/` on fresh deploy
+- Includes: CLS, Fumigation, FSS, Terminals, CHS, MKC, Hogs update
 
 ## P1 - Upcoming
 - Backend spatial filtering for 100k+ scaling
@@ -44,3 +51,4 @@ Interactive map visualization app for sales territory mapping with dual Win Zone
 ## P2 - Future/Backlog
 - Draw circle/polygon tools for custom territory selection
 - CSV/PDF export functionality
+- Re-enable Weighted Win Zones when model is refined
