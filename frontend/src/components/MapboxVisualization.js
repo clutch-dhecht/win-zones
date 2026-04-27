@@ -4,6 +4,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import circle from '@turf/circle';
 import { getLayerConfig } from '../config/layerConfig';
 import { SALES_REPS, getRepForCounty } from '../config/territoryConfig';
+import turfUnion from '@turf/union';
 
 const MAPBOX_TOKEN = process.env.REACT_APP_MAPBOX_TOKEN;
 const COUNTIES_SOURCE = 'https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json';
@@ -146,14 +147,28 @@ const MapboxVisualization = ({
             }
           }
         });
-        // Create one MultiPolygon feature per rep + unassigned
-        const features = Object.entries(repPolygons)
+        // Create one dissolved polygon per rep using turf union
+        const features = [];
+        Object.entries(repPolygons)
           .filter(([, v]) => v.coords.length > 0)
-          .map(([repId, { color, coords }]) => ({
-            type: 'Feature',
-            properties: { rep_id: repId, rep_color: color, is_unassigned: false },
-            geometry: { type: 'MultiPolygon', coordinates: coords }
-          }));
+          .forEach(([repId, { color, coords }]) => {
+            try {
+              // Start with first polygon, union the rest
+              let merged = { type: 'Feature', properties: {}, geometry: { type: coords[0].length > 1 && Array.isArray(coords[0][0][0]) ? 'MultiPolygon' : 'Polygon', coordinates: coords[0] } };
+              // Wrap each coord set as a Feature for union
+              for (let i = 1; i < coords.length; i++) {
+                const next = { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: coords[i] } };
+                try {
+                  const result = turfUnion(merged, next);
+                  if (result) merged = result;
+                } catch (e) { /* skip bad geometry */ }
+              }
+              features.push({
+                ...merged,
+                properties: { rep_id: repId, rep_color: color, is_unassigned: false }
+              });
+            } catch (e) { /* skip if union fails */ }
+          });
         if (unassignedCoords.length > 0) {
           features.push({
             type: 'Feature',
