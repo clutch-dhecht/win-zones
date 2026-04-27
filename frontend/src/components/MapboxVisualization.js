@@ -96,6 +96,7 @@ const MapboxVisualization = ({
   const [hoverInfo, setHoverInfo] = useState(null);
   const [mapStyle, setMapStyle] = useState('mapbox://styles/mapbox/light-v11');
   const [countiesGeoJSON, setCountiesGeoJSON] = useState(null);
+  const [territoryBorderGeoJSON, setTerritoryBorderGeoJSON] = useState(null);
   const mapRef = useRef(null);
 
   useEffect(() => {
@@ -104,6 +105,47 @@ const MapboxVisualization = ({
       .then(data => setCountiesGeoJSON(data))
       .catch(err => console.error('Error loading counties GeoJSON:', err));
   }, []);
+
+  // Build dissolved territory border from US states GeoJSON (one MultiPolygon per rep)
+  useEffect(() => {
+    if (!territoriesEnabled) { setTerritoryBorderGeoJSON(null); return; }
+    fetch('https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json')
+      .then(r => r.json())
+      .then(statesGeo => {
+        // Group state features by rep
+        const repPolygons = {};
+        SALES_REPS.forEach(rep => {
+          if (visibleReps[rep.id] === false) return;
+          repPolygons[rep.id] = { color: rep.color, coords: [] };
+        });
+        statesGeo.features.forEach(f => {
+          const stateName = f.properties.name;
+          SALES_REPS.forEach(rep => {
+            if (visibleReps[rep.id] === false) return;
+            if (rep.states.includes(stateName)) {
+              // Add all coordinate rings to this rep's MultiPolygon
+              if (f.geometry.type === 'Polygon') {
+                repPolygons[rep.id].coords.push(f.geometry.coordinates);
+              } else if (f.geometry.type === 'MultiPolygon') {
+                f.geometry.coordinates.forEach(poly => repPolygons[rep.id].coords.push(poly));
+              }
+            }
+          });
+        });
+        // Create one MultiPolygon feature per rep
+        const features = Object.entries(repPolygons)
+          .filter(([, v]) => v.coords.length > 0)
+          .map(([repId, { color, coords }]) => ({
+            type: 'Feature',
+            properties: { rep_id: repId, rep_color: color },
+            geometry: { type: 'MultiPolygon', coordinates: coords }
+          }));
+        setTerritoryBorderGeoJSON(features.length > 0 ? { type: 'FeatureCollection', features } : null);
+      })
+      .catch(() => setTerritoryBorderGeoJSON(null));
+  }, [territoriesEnabled, visibleReps]);
+
+
 
   const activeDensityLayers = useMemo(() => {
     return Object.keys(activeLayers).filter(layer => {
@@ -441,13 +483,12 @@ const MapboxVisualization = ({
     return features.length > 0 ? { type: 'FeatureCollection', features } : null;
   }, [weightedWinZones, enrichedCountiesGeoJSON]);
 
-  // Build territory overlay GeoJSON from enriched counties
+  // Build territory overlay GeoJSON from enriched counties (for fill only)
   const territoryGeoJSON = useMemo(() => {
     if (!territoriesEnabled || !enrichedCountiesGeoJSON) return null;
     const features = [];
     enrichedCountiesGeoJSON.features.forEach(f => {
       const stateName = f.properties.state_name;
-      // Get county centroid for Montana split
       let lat = 0;
       const coords = f.geometry.type === 'Polygon' ? f.geometry.coordinates[0] : f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates[0][0] : [];
       if (coords.length > 0) {
@@ -703,7 +744,7 @@ const MapboxVisualization = ({
               </Source>
             )}
 
-            {/* Sales Territory Overlay */}
+            {/* Sales Territory Overlay — fill from counties */}
             {territoryGeoJSON && (
               <Source id="territory-overlay" type="geojson" data={territoryGeoJSON}>
                 <Layer
@@ -717,31 +758,15 @@ const MapboxVisualization = ({
               </Source>
             )}
 
-            {/* Territory borders — state-level only (no internal county lines) */}
-            {territoriesEnabled && (
-              <Source id="territory-state-borders" type="geojson" data="https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json">
+            {/* Territory perimeter border — rendered from state GeoJSON, grouped per rep into MultiPolygon */}
+            {territoryBorderGeoJSON && (
+              <Source id="territory-border-dissolved" type="geojson" data={territoryBorderGeoJSON}>
                 <Layer
-                  id="territory-state-border-line"
+                  id="territory-border-line"
                   type="line"
-                  filter={['in', 'name',
-                    'Wyoming', 'Montana', 'New Mexico', 'Texas', 'Oklahoma', 'Kansas', 'Missouri',
-                    'Arizona', 'California', 'Oregon', 'Washington', 'Idaho', 'Utah', 'Nevada',
-                    'South Dakota', 'Nebraska', 'Iowa', 'Minnesota', 'Colorado', 'North Dakota'
-                  ]}
                   paint={{
-                    'line-color': ['match', ['get', 'name'],
-                      'Wyoming', '#DC2626',
-                      'Montana', '#888888',
-                      'New Mexico', '#16A34A', 'Texas', '#16A34A',
-                      'Oklahoma', '#2563EB', 'Kansas', '#2563EB', 'Missouri', '#2563EB',
-                      'Arizona', '#EA580C', 'California', '#EA580C', 'Oregon', '#EA580C',
-                      'Washington', '#EA580C', 'Idaho', '#EA580C', 'Utah', '#EA580C', 'Nevada', '#EA580C',
-                      'South Dakota', '#EAB308', 'Nebraska', '#EAB308', 'Iowa', '#EAB308',
-                      'Minnesota', '#EAB308', 'Colorado', '#EAB308',
-                      'North Dakota', '#7C3AED',
-                      '#888888'
-                    ],
-                    'line-width': 3,
+                    'line-color': ['get', 'rep_color'],
+                    'line-width': 3.5,
                     'line-opacity': 0.85
                   }}
                 />
