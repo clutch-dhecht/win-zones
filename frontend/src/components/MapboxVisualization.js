@@ -711,16 +711,38 @@ const MapboxVisualization = ({
                   type="fill"
                   paint={{
                     'fill-color': ['get', 'rep_color'],
-                    'fill-opacity': 0.18
+                    'fill-opacity': 0.15
                   }}
                 />
+              </Source>
+            )}
+
+            {/* Territory borders — state-level only (no internal county lines) */}
+            {territoriesEnabled && (
+              <Source id="territory-state-borders" type="geojson" data="https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json">
                 <Layer
-                  id="territory-border"
+                  id="territory-state-border-line"
                   type="line"
+                  filter={['in', 'name',
+                    'Wyoming', 'Montana', 'New Mexico', 'Texas', 'Oklahoma', 'Kansas', 'Missouri',
+                    'Arizona', 'California', 'Oregon', 'Washington', 'Idaho', 'Utah', 'Nevada',
+                    'South Dakota', 'Nebraska', 'Iowa', 'Minnesota', 'Colorado', 'North Dakota'
+                  ]}
                   paint={{
-                    'line-color': ['get', 'rep_color'],
-                    'line-width': 2.5,
-                    'line-opacity': 0.7
+                    'line-color': ['match', ['get', 'name'],
+                      'Wyoming', '#DC2626',
+                      'Montana', '#888888',
+                      'New Mexico', '#16A34A', 'Texas', '#16A34A',
+                      'Oklahoma', '#2563EB', 'Kansas', '#2563EB', 'Missouri', '#2563EB',
+                      'Arizona', '#EA580C', 'California', '#EA580C', 'Oregon', '#EA580C',
+                      'Washington', '#EA580C', 'Idaho', '#EA580C', 'Utah', '#EA580C', 'Nevada', '#EA580C',
+                      'South Dakota', '#EAB308', 'Nebraska', '#EAB308', 'Iowa', '#EAB308',
+                      'Minnesota', '#EAB308', 'Colorado', '#EAB308',
+                      'North Dakota', '#7C3AED',
+                      '#888888'
+                    ],
+                    'line-width': 3,
+                    'line-opacity': 0.85
                   }}
                 />
               </Source>

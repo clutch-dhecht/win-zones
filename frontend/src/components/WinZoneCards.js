@@ -298,6 +298,9 @@ const WinZoneCards = ({
 
     // ─── PER REP MODE ───
     if (perRep) {
+      // Tighter merge for per-rep (stays contiguous within large states like TX)
+      const repMergeDist = Math.min(mergeDist, 60);
+
       // Group candidates by sales rep territory
       const repGroups = {};
       candidates.forEach(c => {
@@ -322,7 +325,7 @@ const WinZoneCards = ({
           for (const cand of counties) {
             if (used.has(cand.id) || cluster.length >= maxSize) continue;
             for (const member of cluster) {
-              if (quickDist(member.lat, member.lon, cand.lat, cand.lon) < mergeDist) {
+              if (quickDist(member.lat, member.lon, cand.lat, cand.lon) < repMergeDist) {
                 cluster.push(cand); used.add(cand.id); changed = true; break;
               }
             }
