@@ -27,7 +27,7 @@ export const SALES_REPS = [
     id: 'matthew',
     name: 'Matthew Horlacher',
     color: '#EA580C',
-    states: ['Arizona', 'California', 'Oregon', 'Washington', 'Idaho', 'Utah', 'Nevada'],
+    states: ['Arizona', 'California', 'Oregon', 'Washington', 'Idaho'],
     partialStates: { Montana: { rule: 'north', latThreshold: 47.5 } },
   },
   {

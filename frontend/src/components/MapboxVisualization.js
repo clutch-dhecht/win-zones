@@ -112,18 +112,25 @@ const MapboxVisualization = ({
     fetch('https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json')
       .then(r => r.json())
       .then(statesGeo => {
+        // Collect all assigned states
+        const assignedStates = new Set();
+        SALES_REPS.forEach(rep => rep.states.forEach(s => assignedStates.add(s)));
+        SALES_REPS.forEach(rep => Object.keys(rep.partialStates).forEach(s => assignedStates.add(s)));
+
         // Group state features by rep
         const repPolygons = {};
         SALES_REPS.forEach(rep => {
           if (visibleReps[rep.id] === false) return;
           repPolygons[rep.id] = { color: rep.color, coords: [] };
         });
+        const unassignedCoords = [];
         statesGeo.features.forEach(f => {
           const stateName = f.properties.name;
+          let assigned = false;
           SALES_REPS.forEach(rep => {
             if (visibleReps[rep.id] === false) return;
             if (rep.states.includes(stateName)) {
-              // Add all coordinate rings to this rep's MultiPolygon
+              assigned = true;
               if (f.geometry.type === 'Polygon') {
                 repPolygons[rep.id].coords.push(f.geometry.coordinates);
               } else if (f.geometry.type === 'MultiPolygon') {
@@ -131,15 +138,29 @@ const MapboxVisualization = ({
               }
             }
           });
+          if (!assigned && !assignedStates.has(stateName)) {
+            if (f.geometry.type === 'Polygon') {
+              unassignedCoords.push(f.geometry.coordinates);
+            } else if (f.geometry.type === 'MultiPolygon') {
+              f.geometry.coordinates.forEach(poly => unassignedCoords.push(poly));
+            }
+          }
         });
-        // Create one MultiPolygon feature per rep
+        // Create one MultiPolygon feature per rep + unassigned
         const features = Object.entries(repPolygons)
           .filter(([, v]) => v.coords.length > 0)
           .map(([repId, { color, coords }]) => ({
             type: 'Feature',
-            properties: { rep_id: repId, rep_color: color },
+            properties: { rep_id: repId, rep_color: color, is_unassigned: false },
             geometry: { type: 'MultiPolygon', coordinates: coords }
           }));
+        if (unassignedCoords.length > 0) {
+          features.push({
+            type: 'Feature',
+            properties: { rep_id: 'unassigned', rep_color: '#D4D4D4', is_unassigned: true },
+            geometry: { type: 'MultiPolygon', coordinates: unassignedCoords }
+          });
+        }
         setTerritoryBorderGeoJSON(features.length > 0 ? { type: 'FeatureCollection', features } : null);
       })
       .catch(() => setTerritoryBorderGeoJSON(null));
@@ -762,8 +783,18 @@ const MapboxVisualization = ({
             {territoryBorderGeoJSON && (
               <Source id="territory-border-dissolved" type="geojson" data={territoryBorderGeoJSON}>
                 <Layer
+                  id="territory-unassigned-fill"
+                  type="fill"
+                  filter={['==', ['get', 'is_unassigned'], true]}
+                  paint={{
+                    'fill-color': '#E5E5E5',
+                    'fill-opacity': 0.35
+                  }}
+                />
+                <Layer
                   id="territory-border-line"
                   type="line"
+                  filter={['==', ['get', 'is_unassigned'], false]}
                   paint={{
                     'line-color': ['get', 'rep_color'],
                     'line-width': 3.5,
