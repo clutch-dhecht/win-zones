@@ -112,9 +112,12 @@ const MapboxVisualization = ({
     fetch('https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json')
       .then(r => r.json())
       .then(statesGeo => {
-        // Collect all assigned states
+        // Collect all assigned states (including partial)
         const assignedStates = new Set();
-        SALES_REPS.forEach(rep => rep.states.forEach(s => assignedStates.add(s)));
+        SALES_REPS.forEach(rep => {
+          rep.states.forEach(s => assignedStates.add(s));
+          Object.keys(rep.partialStates).forEach(s => assignedStates.add(s));
+        });
 
         const features = [];
         const unassignedCoords = [];
@@ -123,6 +126,16 @@ const MapboxVisualization = ({
         SALES_REPS.forEach(rep => {
           if (visibleReps[rep.id] === false) return;
           rep.states.forEach(stateName => {
+            const stateFeature = statesGeo.features.find(f => f.properties.name === stateName);
+            if (stateFeature) {
+              features.push({
+                ...stateFeature,
+                properties: { ...stateFeature.properties, rep_id: rep.id, rep_color: rep.color, is_unassigned: false }
+              });
+            }
+          });
+          // Also include partial states (Montana) — show full state border in this rep's color
+          Object.keys(rep.partialStates).forEach(stateName => {
             const stateFeature = statesGeo.features.find(f => f.properties.name === stateName);
             if (stateFeature) {
               features.push({
