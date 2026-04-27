@@ -3,6 +3,7 @@ import Map, { Source, Layer, Popup, NavigationControl } from 'react-map-gl/mapbo
 import 'mapbox-gl/dist/mapbox-gl.css';
 import circle from '@turf/circle';
 import { getLayerConfig } from '../config/layerConfig';
+import { SALES_REPS, getRepForCounty } from '../config/territoryConfig';
 
 const MAPBOX_TOKEN = process.env.REACT_APP_MAPBOX_TOKEN;
 const COUNTIES_SOURCE = 'https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json';
@@ -82,6 +83,8 @@ const MapboxVisualization = ({
   winZonesEnabled = false,
   winZones = [],
   weightedWinZones = [],
+  territoriesEnabled = false,
+  visibleReps = {},
   onWinZoneRankings,
   onEnrichedFeatures,
   onMapZoom,
@@ -438,6 +441,29 @@ const MapboxVisualization = ({
     return features.length > 0 ? { type: 'FeatureCollection', features } : null;
   }, [weightedWinZones, enrichedCountiesGeoJSON]);
 
+  // Build territory overlay GeoJSON from enriched counties
+  const territoryGeoJSON = useMemo(() => {
+    if (!territoriesEnabled || !enrichedCountiesGeoJSON) return null;
+    const features = [];
+    enrichedCountiesGeoJSON.features.forEach(f => {
+      const stateName = f.properties.state_name;
+      // Get county centroid for Montana split
+      let lat = 0;
+      const coords = f.geometry.type === 'Polygon' ? f.geometry.coordinates[0] : f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates[0][0] : [];
+      if (coords.length > 0) {
+        lat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+      }
+      const rep = getRepForCounty(stateName, lat);
+      if (!rep) return;
+      if (visibleReps[rep.id] === false) return;
+      features.push({
+        ...f,
+        properties: { ...f.properties, rep_id: rep.id, rep_name: rep.name, rep_color: rep.color }
+      });
+    });
+    return features.length > 0 ? { type: 'FeatureCollection', features } : null;
+  }, [territoriesEnabled, enrichedCountiesGeoJSON, visibleReps]);
+
 
   // Click handler
   const onMapClick = useCallback((event) => {
@@ -672,6 +698,29 @@ const MapboxVisualization = ({
                     'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1, 6, 1.5, 10, 2],
                     'line-opacity': 1,
                     'line-dasharray': [2, 3]
+                  }}
+                />
+              </Source>
+            )}
+
+            {/* Sales Territory Overlay */}
+            {territoryGeoJSON && (
+              <Source id="territory-overlay" type="geojson" data={territoryGeoJSON}>
+                <Layer
+                  id="territory-fill"
+                  type="fill"
+                  paint={{
+                    'fill-color': ['get', 'rep_color'],
+                    'fill-opacity': 0.18
+                  }}
+                />
+                <Layer
+                  id="territory-border"
+                  type="line"
+                  paint={{
+                    'line-color': ['get', 'rep_color'],
+                    'line-width': 2.5,
+                    'line-opacity': 0.7
                   }}
                 />
               </Source>

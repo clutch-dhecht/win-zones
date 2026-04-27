@@ -1,0 +1,109 @@
+{
+  "summary": "Completed comprehensive frontend testing of Sales Rep Territory Overlay and Per Rep Win Zones features. All 10 features tested - 10 passed. Sales Territories toggle shows colored state-level boundaries for all 6 reps. Filter by rep expands to show individual rep toggles with eye icons and crosshair buttons. Montana is correctly split at latitude 47.5 between Laramie (south/red) and Matthew (north/orange). Per Rep mode in Win Zones shows zone cards named after each sales rep.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Sales Territories toggle ON shows colored state fills for all 6 reps on the map - PASS",
+    "Sales Territories toggle OFF removes all territory fills from map - PASS",
+    "Expanding 'Filter by rep' shows all 6 reps with eye icons and crosshair buttons - PASS",
+    "Clicking eye icon for a rep hides/shows their territory on the map - PASS",
+    "Clicking crosshair zooms to that rep's territory - PASS",
+    "Montana is split — southern half is red (Laramie), northern half is orange (Matthew) - PASS (verified via screenshots)",
+    "Per Rep button in Win Zones Focus row activates per-rep mode - PASS",
+    "Per Rep mode shows zone cards named after the rep (found Matthew Horlacher, Miya Butler, Natalie Tokach) - PASS",
+    "Toggling Per Rep off returns to normal 5-zone national mode - PASS",
+    "Market Views (Wheat, Corn, etc.) still work correctly with territories enabled - PASS"
+  ],
+  "test_report_links": [
+    "/app/test_reports/iteration_10.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend only testing)",
+    "frontend": "100% (10/10 tests passed)"
+  },
+  "test_credentials": "No authentication required. Mapbox token configured in frontend/.env",
+  "seed_data_creation": "No new seed data created - using existing data",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Sales Rep Territory Overlay and Per Rep Win Zones features fully implemented and tested. Key data-testids: territories-toggle, territories-expand, territory-rep-{laramie|sid|miya|matthew|tyler|natalie}, territory-eye-{id}, territory-zoom-{id}, zone-per-rep. The 6 reps are: Laramie Wiginton (red #DC2626), Sid Chambers (green #16A34A), Miya Butler (blue #2563EB), Matthew Horlacher (orange #EA580C), Tyler Pierson (yellow #EAB308), Natalie Tokach (purple #7C3AED). Montana split at latitude 47.5 - south goes to Laramie, north goes to Matthew.",
+  "features_verified": {
+    "territories_toggle_on": {
+      "status": "PASS",
+      "details": "Toggle works, shows colored state fills for all 6 reps"
+    },
+    "territories_toggle_off": {
+      "status": "PASS",
+      "details": "Toggle off removes all territory fills from map"
+    },
+    "filter_by_rep_expand": {
+      "status": "PASS",
+      "details": "All 6 reps visible with eye icons and crosshair buttons: laramie, sid, miya, matthew, tyler, natalie"
+    },
+    "eye_icon_toggle": {
+      "status": "PASS",
+      "details": "Clicking eye icon dims the rep row (opacity-40) and hides territory on map"
+    },
+    "crosshair_zoom": {
+      "status": "PASS",
+      "details": "Clicking crosshair zooms map to rep's territory bounding box"
+    },
+    "montana_split": {
+      "status": "PASS",
+      "details": "Montana split at latitude 47.5 - southern counties show red (Laramie), northern counties show orange (Matthew)"
+    },
+    "per_rep_mode_activation": {
+      "status": "PASS",
+      "details": "Per Rep button activates with bg-stone-800 class when clicked"
+    },
+    "per_rep_zone_cards": {
+      "status": "PASS",
+      "details": "Zone cards show rep names: Matthew Horlacher, Miya Butler, Natalie Tokach found in cards"
+    },
+    "per_rep_mode_off": {
+      "status": "PASS",
+      "details": "Toggling Per Rep off returns to geographic zone names (Central North Dakota, Central Kansas, etc.)"
+    },
+    "market_views_with_territories": {
+      "status": "PASS",
+      "details": "Switching between Wheat, Corn, Rice markets works correctly with territories enabled"
+    }
+  },
+  "territory_config": {
+    "laramie_wiginton": {
+      "color": "#DC2626 (red)",
+      "states": ["Wyoming"],
+      "partial_states": "Montana south of latitude 47.5"
+    },
+    "sid_chambers": {
+      "color": "#16A34A (green)",
+      "states": ["New Mexico", "Texas"]
+    },
+    "miya_butler": {
+      "color": "#2563EB (blue)",
+      "states": ["Oklahoma", "Kansas", "Missouri"]
+    },
+    "matthew_horlacher": {
+      "color": "#EA580C (orange)",
+      "states": ["Arizona", "California", "Oregon", "Washington", "Idaho", "Utah", "Nevada"],
+      "partial_states": "Montana north of latitude 47.5"
+    },
+    "tyler_pierson": {
+      "color": "#EAB308 (yellow)",
+      "states": ["South Dakota", "Nebraska", "Iowa", "Minnesota", "Colorado"]
+    },
+    "natalie_tokach": {
+      "color": "#7C3AED (purple)",
+      "states": ["North Dakota"]
+    }
+  }
+}

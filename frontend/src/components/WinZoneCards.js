@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { ChevronDown, ChevronRight, Crosshair, Eye, EyeOff } from 'lucide-react';
+import { SALES_REPS, getRepForCounty } from '../config/territoryConfig';
 
 // Layer categorization
 const LAYER_CATEGORIES = {
@@ -150,6 +151,78 @@ const nameCluster = (counties) => {
   return { name, dominantState, lat: avgLat, lon: avgLon };
 };
 
+// Build a zone object from a cluster of counties
+const buildZoneFromCluster = (cluster, idx, totalMarketDensity, activeLayers, locationData, pointData, overrideName) => {
+  const { name: autoName, lat, lon } = nameCluster(cluster);
+  const name = overrideName || autoName;
+  const avgScore = cluster.reduce((s, c) => s + c.score, 0) / cluster.length;
+
+  const aggregatedLayers = {};
+  cluster.forEach(c => {
+    Object.entries(c.densityLayers).forEach(([layer, value]) => {
+      if (activeLayers[layer]) aggregatedLayers[layer] = (aggregatedLayers[layer] || 0) + value;
+    });
+  });
+
+  const lats = cluster.map(c => c.lat), lons = cluster.map(c => c.lon);
+  const bbox = { minLat: Math.min(...lats) - 0.5, maxLat: Math.max(...lats) + 0.5, minLon: Math.min(...lons) - 0.5, maxLon: Math.max(...lons) + 0.5 };
+
+  const pointCounts = {};
+  (locationData || []).forEach(loc => {
+    if (!activeLayers[loc.layer]) return;
+    if (loc.lat >= bbox.minLat && loc.lat <= bbox.maxLat && loc.lon >= bbox.minLon && loc.lon <= bbox.maxLon) {
+      pointCounts[loc.layer] = (pointCounts[loc.layer] || 0) + 1;
+    }
+  });
+
+  let nearestCLS = null;
+  (pointData || []).forEach(city => {
+    if ((city.layers?.['CLS Customer Head Sheds'] || 0) <= 0) return;
+    const dist = quickDist(lat, lon, city.lat, city.lon);
+    if (!nearestCLS || dist < nearestCLS.dist) nearestCLS = { city: city.city, state: city.state, dist: Math.round(dist) };
+  });
+  (locationData || []).forEach(loc => {
+    if (loc.layer !== 'CLS Customer Head Sheds') return;
+    const dist = quickDist(lat, lon, loc.lat, loc.lon);
+    if (!nearestCLS || dist < nearestCLS.dist) nearestCLS = { city: loc.city, state: loc.state, dist: Math.round(dist), name: loc.name };
+  });
+
+  const categorized = { market_size: {}, people: {}, partners: {} };
+  Object.entries(aggregatedLayers).forEach(([layer, value]) => { const cat = LAYER_CATEGORIES[layer] || 'market_size'; if (cat !== 'cls') categorized[cat][layer] = value; });
+  Object.entries(pointCounts).forEach(([layer, count]) => { const cat = LAYER_CATEGORIES[layer] || 'partners'; if (cat !== 'cls') categorized[cat][layer] = count; });
+
+  const zoneDensity = cluster.reduce((s, c) => s + c.rawDensity, 0);
+  const avgCoverage = cluster.reduce((s, c) => s + c.coveragePct, 0) / cluster.length;
+  const coveragePctRound = Math.round(avgCoverage * 100);
+
+  const zoneLocations = (locationData || []).filter(loc => {
+    if (!activeLayers[loc.layer]) return false;
+    if (LAYER_CATEGORIES[loc.layer] === 'cls') return false;
+    return loc.lat >= bbox.minLat && loc.lat <= bbox.maxLat && loc.lon >= bbox.minLon && loc.lon <= bbox.maxLon;
+  });
+  const topCounties = [...cluster]
+    .map(c => {
+      const layers = {}; let peopleTotal = 0;
+      Object.entries(c.densityLayers).forEach(([l, v]) => { if (activeLayers[l] && v > 0 && LAYER_CATEGORIES[l] === 'people') { layers[l] = v; peopleTotal += v; } });
+      zoneLocations.forEach(loc => { const d = quickDist(c.lat, c.lon, loc.lat, loc.lon); if (d < 30) { layers[loc.layer] = (layers[loc.layer] || 0) + 1; peopleTotal += 1; } });
+      return { name: `${c.county}, ${c.state}`, peopleTotal, layers };
+    })
+    .sort((a, b) => b.peopleTotal - a.peopleTotal)
+    .slice(0, 10);
+
+  return {
+    id: idx, name, countyCount: cluster.length, score: Math.round(avgScore * 100),
+    categorized, lat, lon, bbox,
+    counties: cluster.map(c => `${c.county}, ${c.state}`),
+    countyIds: cluster.map(c => c.id),
+    topCounties,
+    coveragePct: coveragePctRound,
+    coverageLabel: coveragePctRound >= 60 ? 'Deepen' : coveragePctRound >= 25 ? 'Fill gaps' : 'Expand',
+    zoneDensity,
+    marketPct: totalMarketDensity > 0 ? Math.round((zoneDensity / totalMarketDensity) * 100) : 0,
+  };
+};
+
 const WinZoneCards = ({
   enrichedFeatures,
   activeLayers,
@@ -161,6 +234,7 @@ const WinZoneCards = ({
   pointData,
   onZoomToZone,
   onZonesComputed,
+  perRep = false,
 }) => {
   const [expandedZone, setExpandedZone] = React.useState(null);
   const [showAllZones, setShowAllZones] = React.useState(false);
@@ -222,7 +296,52 @@ const WinZoneCards = ({
     };
     const { mergeDist, maxSize } = FOCUS_SETTINGS[zoneFocus] || FOCUS_SETTINGS.regional;
 
-    // STATE-SEEDED CLUSTERING
+    // ─── PER REP MODE ───
+    if (perRep) {
+      // Group candidates by sales rep territory
+      const repGroups = {};
+      candidates.forEach(c => {
+        const rep = getRepForCounty(c.state, c.lat);
+        if (!rep) return;
+        if (!repGroups[rep.id]) repGroups[rep.id] = { rep, counties: [] };
+        repGroups[rep.id].counties.push(c);
+      });
+
+      // For each rep, find the best cluster within their territory
+      const repClusters = [];
+      Object.values(repGroups).forEach(({ rep, counties }) => {
+        if (counties.length < 3) return;
+        // Sort by raw density, seed from top county
+        counties.sort((a, b) => b.rawDensity - a.rawDensity);
+        const seed = counties[0];
+        const cluster = [seed];
+        const used = new Set([seed.id]);
+        let changed = true;
+        while (changed && cluster.length < maxSize) {
+          changed = false;
+          for (const cand of counties) {
+            if (used.has(cand.id) || cluster.length >= maxSize) continue;
+            for (const member of cluster) {
+              if (quickDist(member.lat, member.lon, cand.lat, cand.lon) < mergeDist) {
+                cluster.push(cand); used.add(cand.id); changed = true; break;
+              }
+            }
+          }
+        }
+        repClusters.push({ cluster, rep });
+      });
+
+      // Sort by cluster density
+      repClusters.sort((a, b) => {
+        return b.cluster.reduce((s, c) => s + c.rawDensity, 0) - a.cluster.reduce((s, c) => s + c.rawDensity, 0);
+      });
+
+      // Convert to zone objects (reuse the same format as normal mode)
+      const totalMarketDensity = candidates.reduce((s, c) => s + c.rawDensity, 0);
+      return repClusters.slice(0, 6).map((item, idx) => buildZoneFromCluster(item.cluster, idx, totalMarketDensity, activeLayers, locationData, pointData, item.rep.name));
+    }
+
+    // ─── NORMAL STATE-SEEDED CLUSTERING ───
     // 1. Group candidates by state, rank states by total raw density
     const stateGroups = {};
     candidates.forEach(c => {
@@ -459,7 +578,7 @@ const WinZoneCards = ({
         marketPct: totalMarketDensity > 0 ? Math.round((zoneDensity / totalMarketDensity) * 100) : 0,
       };
     });
-  }, [enrichedFeatures, activeLayers, winZonesMode, selectedStates, zoneFocus, locationData, pointData]);
+  }, [enrichedFeatures, activeLayers, winZonesMode, selectedStates, zoneFocus, locationData, pointData, perRep]);
 
   // Default: zones 4+ (index >= 3) hidden on map unless user manually toggles
   React.useEffect(() => {

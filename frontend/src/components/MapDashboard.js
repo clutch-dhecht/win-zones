@@ -8,6 +8,8 @@ import LayerStats from './LayerStats';
 import StateFilter from './StateFilter';
 import WinZoneCards from './WinZoneCards';
 import WeightedWinZones from './WeightedWinZones';
+import SalesTerritories from './SalesTerritories';
+import { SALES_REPS, getRepStates } from '../config/territoryConfig';
 import { toast } from 'sonner';
 import { getLayerConfig } from '../config/layerConfig';
 import { ChevronDown, ChevronRight, Settings2 } from 'lucide-react';
@@ -38,6 +40,9 @@ const MapDashboard = ({ apiUrl }) => {
   const [topZones, setTopZones] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [territoriesEnabled, setTerritoriesEnabled] = useState(false);
+  const [visibleReps, setVisibleReps] = useState({});
+  const [winZonesPerRep, setWinZonesPerRep] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [showZoneFocus, setShowZoneFocus] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -126,6 +131,49 @@ const MapDashboard = ({ apiUrl }) => {
   const handleZoomToZone = useCallback((zone) => {
     if (mapZoomRef.current && zone.bbox) {
       mapZoomRef.current(zone.bbox);
+    }
+    setMobileOpen(false);
+  }, []);
+
+  const handleRepToggle = (repId) => {
+    setVisibleReps(prev => ({ ...prev, [repId]: prev[repId] === false ? true : false }));
+  };
+
+  const handleZoomToRep = useCallback((rep) => {
+    // Simple bbox lookup by state centers
+    const STATE_BOUNDS = {
+      'Wyoming': { minLat: 41, maxLat: 45, minLon: -111, maxLon: -104 },
+      'Montana': { minLat: 44.5, maxLat: 49, minLon: -116, maxLon: -104 },
+      'New Mexico': { minLat: 31.5, maxLat: 37, minLon: -109, maxLon: -103 },
+      'Texas': { minLat: 25.8, maxLat: 36.5, minLon: -106.5, maxLon: -93.5 },
+      'Oklahoma': { minLat: 33.6, maxLat: 37, minLon: -103, maxLon: -94.5 },
+      'Kansas': { minLat: 37, maxLat: 40, minLon: -102, maxLon: -94.5 },
+      'Missouri': { minLat: 36, maxLat: 40.6, minLon: -95.8, maxLon: -89 },
+      'Arizona': { minLat: 31.3, maxLat: 37, minLon: -114.8, maxLon: -109 },
+      'California': { minLat: 32.5, maxLat: 42, minLon: -124.5, maxLon: -114 },
+      'Oregon': { minLat: 42, maxLat: 46.3, minLon: -124.5, maxLon: -116.5 },
+      'Washington': { minLat: 45.5, maxLat: 49, minLon: -124.8, maxLon: -117 },
+      'Idaho': { minLat: 42, maxLat: 49, minLon: -117, maxLon: -111 },
+      'Utah': { minLat: 37, maxLat: 42, minLon: -114, maxLon: -109 },
+      'Nevada': { minLat: 35, maxLat: 42, minLon: -120, maxLon: -114 },
+      'South Dakota': { minLat: 42.5, maxLat: 46, minLon: -104.1, maxLon: -96.5 },
+      'Nebraska': { minLat: 40, maxLat: 43, minLon: -104, maxLon: -95.3 },
+      'Iowa': { minLat: 40.4, maxLat: 43.5, minLon: -96.6, maxLon: -90 },
+      'Minnesota': { minLat: 43.5, maxLat: 49.4, minLon: -97.2, maxLon: -89.5 },
+      'Colorado': { minLat: 37, maxLat: 41, minLon: -109, maxLon: -102 },
+      'North Dakota': { minLat: 45.9, maxLat: 49, minLon: -104.1, maxLon: -96.5 },
+    };
+    const repStates = getRepStates(rep.id);
+    let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
+    repStates.forEach(s => {
+      const b = STATE_BOUNDS[s];
+      if (b) {
+        minLat = Math.min(minLat, b.minLat); maxLat = Math.max(maxLat, b.maxLat);
+        minLon = Math.min(minLon, b.minLon); maxLon = Math.max(maxLon, b.maxLon);
+      }
+    });
+    if (mapZoomRef.current && minLat < 90) {
+      mapZoomRef.current({ minLat: minLat - 0.5, maxLat: maxLat + 0.5, minLon: minLon - 0.5, maxLon: maxLon + 0.5 });
     }
     setMobileOpen(false);
   }, []);
@@ -257,6 +305,15 @@ const MapDashboard = ({ apiUrl }) => {
                   {opt.label}
                 </button>
               ))}
+              <button
+                onClick={() => setWinZonesPerRep(v => !v)}
+                className={`text-[10px] px-2 py-0.5 rounded transition-colors ml-1 ${
+                  winZonesPerRep ? 'bg-stone-800 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
+                }`}
+                data-testid="zone-per-rep"
+              >
+                Per Rep
+              </button>
             </div>
           )}
           <p className="text-[10px] text-stone-400 ml-5 mt-1 leading-tight">
@@ -285,6 +342,20 @@ const MapDashboard = ({ apiUrl }) => {
             pointData={pointData}
             onZoomToZone={handleZoomToZone}
             onZonesComputed={setWinZones}
+            perRep={winZonesPerRep}
+          />
+        </div>
+      )}
+
+      {/* Sales Territories */}
+      {hasData && (
+        <div className="px-4 py-3 border-b border-stone-100">
+          <SalesTerritories
+            enabled={territoriesEnabled}
+            onToggle={setTerritoriesEnabled}
+            visibleReps={visibleReps}
+            onRepToggle={handleRepToggle}
+            onZoomToRep={handleZoomToRep}
           />
         </div>
       )}
@@ -475,6 +546,8 @@ const MapDashboard = ({ apiUrl }) => {
             winZonesEnabled={winZonesMode}
             winZones={winZones}
             weightedWinZones={weightedWinEnabled ? weightedWinZones : []}
+            territoriesEnabled={territoriesEnabled}
+            visibleReps={visibleReps}
             onWinZoneRankings={setWinZoneRankings}
             onEnrichedFeatures={setEnrichedFeatures}
             onMapZoom={(fn) => { mapZoomRef.current = fn; }}
