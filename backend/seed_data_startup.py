@@ -302,7 +302,9 @@ async def _seed_chs(db, existing_set):
 
 async def _seed_mcgregor(db, existing_set):
     if 'McGregor Locations' in existing_set:
-        return
+        count = await db.location_points.count_documents({'layer': 'McGregor Locations'})
+        if count >= 25:
+            return
     xlsx = SEED_DIR / 'mcgregor_locations.xlsx'
     if not xlsx.exists():
         return
@@ -324,6 +326,7 @@ async def _seed_mcgregor(db, existing_set):
         points.append({'name': name, 'layer': 'McGregor Locations', 'city': city.title(),
                        'state': state_full, 'address': address, 'lat': geo['lat'], 'lon': geo['lon']})
     if points:
+        await db.location_points.delete_many({'layer': 'McGregor Locations'})
         await db.location_points.insert_many(points)
     logger.info(f"Seeded {len(points)} McGregor Locations")
 
