@@ -317,7 +317,7 @@ const WinZoneCards = ({
 
         // Rep's total market = sum of all density in their territory
         const repTotal = counties.reduce((s, c) => s + c.rawDensity, 0);
-        const targetDensity = repTotal * 0.90; // aim for 90% of rep's territory
+        const targetDensity = repTotal * 0.95; // aim for 95% of rep's territory
         const repMaxSize = 100; // allow larger zones in per-rep mode
 
         // Anchor: find the best cluster seed by checking top 10 counties
