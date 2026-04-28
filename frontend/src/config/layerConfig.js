@@ -185,6 +185,15 @@ export const LAYER_CONFIG = {
     order: 33
   },
 
+  // --- MCGREGOR LOCATIONS ---
+  "McGregor Locations": {
+    type: "point",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#0F766E",
+    markerColor: "#0F766E",
+    order: 34
+  },
+
   // --- DENSITY LAYERS (County-level aggregations) ---
   "1000+ Wheat Growers": {
     type: "density",

@@ -79,6 +79,7 @@ async def seed_all(db):
         await _seed_grain_terminals(db, existing_set)
         await _seed_chs(db, existing_set)
         await _seed_mkc(db, existing_set)
+        await _seed_mcgregor(db, existing_set)
         await _seed_hogs(db)
 
         logger.info("Seed check complete")
@@ -296,6 +297,35 @@ async def _seed_chs(db, existing_set):
     if points:
         await db.location_points.insert_many(points)
     logger.info(f"Seeded {len(points)} CHS points")
+
+
+
+async def _seed_mcgregor(db, existing_set):
+    if 'McGregor Locations' in existing_set:
+        return
+    xlsx = SEED_DIR / 'mcgregor_locations.xlsx'
+    if not xlsx.exists():
+        return
+    logger.info("Seeding McGregor Locations...")
+    df = pd.read_excel(xlsx)
+    df = df[df['Location Name'].notna()]
+    points = []
+    for _, row in df.iterrows():
+        name = str(row['Location Name']).strip()
+        city = str(row['City']).strip() if pd.notna(row['City']) else ''
+        state_raw = str(row['State']).strip() if pd.notna(row['State']) else ''
+        address = str(row.get('Street Address', '')).strip() if pd.notna(row.get('Street Address', '')) else ''
+        if not city or not state_raw:
+            continue
+        state_full = _to_state_full(state_raw)
+        geo = _geocode(city, state_full)
+        if not geo:
+            continue
+        points.append({'name': name, 'layer': 'McGregor Locations', 'city': city.title(),
+                       'state': state_full, 'address': address, 'lat': geo['lat'], 'lon': geo['lon']})
+    if points:
+        await db.location_points.insert_many(points)
+    logger.info(f"Seeded {len(points)} McGregor Locations")
 
 
 async def _seed_hogs(db):

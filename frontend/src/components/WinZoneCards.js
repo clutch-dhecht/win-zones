@@ -36,6 +36,7 @@ const LAYER_CATEGORIES = {
   'CHS Agronomy': 'partners',
   'MKC Grain': 'partners',
   'MKC Agronomy': 'partners',
+  'McGregor Locations': 'partners',
   // CLS
   'CLS Customer Head Sheds': 'cls',
 };
