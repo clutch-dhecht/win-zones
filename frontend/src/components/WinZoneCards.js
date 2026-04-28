@@ -317,7 +317,7 @@ const WinZoneCards = ({
 
         // Rep's total market = sum of all density in their territory
         const repTotal = counties.reduce((s, c) => s + c.rawDensity, 0);
-        const targetDensity = repTotal * 0.75; // aim for 75% of rep's territory
+        const targetDensity = repTotal * 0.90; // aim for 90% of rep's territory
         const repMaxSize = 100; // allow larger zones in per-rep mode
 
         // Anchor: find the best cluster seed by checking top 10 counties
@@ -329,7 +329,7 @@ const WinZoneCards = ({
           let neighborDensity = 0;
           for (const other of counties) {
             if (other.id === candidate.id) continue;
-            if (quickDist(candidate.lat, candidate.lon, other.lat, other.lon) < 100) {
+            if (quickDist(candidate.lat, candidate.lon, other.lat, other.lon) < 150) {
               neighborDensity += other.rawDensity;
             }
           }
@@ -352,10 +352,10 @@ const WinZoneCards = ({
           for (const cand of counties) {
             if (used.has(cand.id)) continue;
             if (cand.rawDensity <= bestNextDensity) continue;
-            // Check connectivity — within 100mi of any cluster member
+            // Check connectivity — within 150mi of any cluster member
             let connected = false;
             for (const member of cluster) {
-              if (quickDist(member.lat, member.lon, cand.lat, cand.lon) < 100) {
+              if (quickDist(member.lat, member.lon, cand.lat, cand.lon) < 150) {
                 connected = true; break;
               }
             }
