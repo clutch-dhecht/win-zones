@@ -317,7 +317,8 @@ const WinZoneCards = ({
 
         // Rep's total market = sum of all density in their territory
         const repTotal = counties.reduce((s, c) => s + c.rawDensity, 0);
-        const targetDensity = repTotal * 0.5; // aim for 50% coverage
+        const targetDensity = repTotal * 0.75; // aim for 75% of rep's territory
+        const repMaxSize = 100; // allow larger zones in per-rep mode
 
         // Anchor: find the best cluster seed by checking top 10 counties
         // and picking the one with the most high-density neighbors within 100mi
@@ -344,7 +345,7 @@ const WinZoneCards = ({
         const used = new Set([bestAnchor.id]);
         let clusterDensity = bestAnchor.rawDensity;
 
-        while (clusterDensity < targetDensity && cluster.length < maxSize) {
+        while (clusterDensity < targetDensity && cluster.length < repMaxSize) {
           // Find the best candidate: highest density that's within 100mi of any cluster member
           let bestNext = null;
           let bestNextDensity = 0;
