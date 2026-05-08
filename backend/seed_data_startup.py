@@ -80,6 +80,8 @@ async def seed_all(db):
         await _seed_chs(db, existing_set)
         await _seed_mkc(db, existing_set)
         await _seed_mcgregor(db, existing_set)
+        await _seed_nutrien(db, existing_set)
+        await _seed_rice_commercial(db, existing_set)
         await _seed_hogs(db)
 
         logger.info("Seed check complete")
@@ -329,6 +331,74 @@ async def _seed_mcgregor(db, existing_set):
         await db.location_points.delete_many({'layer': 'McGregor Locations'})
         await db.location_points.insert_many(points)
     logger.info(f"Seeded {len(points)} McGregor Locations")
+
+
+async def _seed_nutrien(db, existing_set):
+    if 'Nutrien Locations' in existing_set:
+        count = await db.location_points.count_documents({'layer': 'Nutrien Locations'})
+        if count >= 50:
+            return
+    csv_path = SEED_DIR / 'nutrien_locations.csv'
+    if not csv_path.exists():
+        return
+    logger.info("Seeding Nutrien Locations...")
+    df = pd.read_csv(csv_path)
+    points = []
+    for _, row in df.iterrows():
+        name = str(row['Location Name']).strip() if pd.notna(row['Location Name']) else ''
+        loc_type = str(row.get('Type', '')).strip() if pd.notna(row.get('Type', '')) else ''
+        address = str(row.get('Address', '')).strip() if pd.notna(row.get('Address', '')) else ''
+        city = str(row['City']).strip() if pd.notna(row['City']) else ''
+        state_raw = str(row['State']).strip() if pd.notna(row['State']) else ''
+        zip_code = str(row.get('Zip', '')).strip() if pd.notna(row.get('Zip', '')) else ''
+        if not city or not state_raw:
+            continue
+        state_full = _to_state_full(state_raw)
+        geo = _geocode(city, state_full)
+        if not geo:
+            continue
+        points.append({'name': name, 'layer': 'Nutrien Locations', 'type': loc_type,
+                       'address': address, 'city': city.title(), 'state': state_full,
+                       'zip': zip_code, 'lat': geo['lat'], 'lon': geo['lon']})
+    if points:
+        await db.location_points.delete_many({'layer': 'Nutrien Locations'})
+        await db.location_points.insert_many(points)
+    logger.info(f"Seeded {len(points)} Nutrien Locations")
+
+
+async def _seed_rice_commercial(db, existing_set):
+    rice_layers = {'Riceland Co-op', 'Supreme Rice', 'Producers Rice Mill'}
+    if rice_layers.issubset(existing_set):
+        count = await db.location_points.count_documents({'layer': {'$in': list(rice_layers)}})
+        if count >= 30:
+            return
+    xlsx = SEED_DIR / 'rice_commercial.xlsx'
+    if not xlsx.exists():
+        return
+    logger.info("Seeding Rice Commercial...")
+    df = pd.read_excel(xlsx)
+    points = []
+    for _, row in df.iterrows():
+        coop = str(row['Co-op']).strip() if pd.notna(row['Co-op']) else ''
+        city_state = str(row['City/State']).strip() if pd.notna(row['City/State']) else ''
+        if not coop or ',' not in city_state:
+            continue
+        city_part, state_part = [p.strip() for p in city_state.split(',', 1)]
+        # Fix known typos in source data
+        typo_fixes = {'suttgart': 'Stuttgart', 'wynee': 'Wynne'}
+        if city_part.lower() in typo_fixes:
+            city_part = typo_fixes[city_part.lower()]
+        state_full = _to_state_full(state_part)
+        geo = _geocode(city_part, state_full)
+        if not geo:
+            logger.warning(f"Rice Commercial: could not geocode {city_part}, {state_full}")
+            continue
+        points.append({'name': coop, 'layer': coop, 'city': city_part.title(),
+                       'state': state_full, 'lat': geo['lat'], 'lon': geo['lon']})
+    if points:
+        await db.location_points.delete_many({'layer': {'$in': list(rice_layers)}})
+        await db.location_points.insert_many(points)
+    logger.info(f"Seeded {len(points)} Rice Commercial points")
 
 
 async def _seed_hogs(db):

@@ -32,7 +32,9 @@ const MARKET_PRESETS = {
     layers: [
       'FSS Grain', 'FSS Flour Mills', 'FSS Specialty Mills', 'FSS Mix Plants',
       'Terminals Rough Rice',
-      'CHS Grain', 'MKC Grain', 'McGregor Locations', 'Grain Elevators', 'CLS Customer Head Sheds', 'Grain Fumigation',
+      'Nutrien Locations',
+      'Riceland Co-op', 'Supreme Rice', 'Producers Rice Mill',
+      'Grain Elevators', 'CLS Customer Head Sheds', 'Grain Fumigation',
       '1000+ Rice Growers', 'Rice Acres',
     ],
   },

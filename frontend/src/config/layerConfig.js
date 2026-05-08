@@ -194,6 +194,41 @@ export const LAYER_CONFIG = {
     order: 34
   },
 
+  // --- NUTRIEN LOCATIONS ---
+  "Nutrien Locations": {
+    type: "point",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#15803D",
+    markerColor: "#15803D",
+    order: 35
+  },
+
+  // --- RICE COMMERCIAL (sub-layers by company) ---
+  "Riceland Co-op": {
+    type: "point",
+    group: "rice_commercial",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#B91C1C",
+    markerColor: "#B91C1C",
+    order: 40
+  },
+  "Supreme Rice": {
+    type: "point",
+    group: "rice_commercial",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#C026D3",
+    markerColor: "#C026D3",
+    order: 41
+  },
+  "Producers Rice Mill": {
+    type: "point",
+    group: "rice_commercial",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#F59E0B",
+    markerColor: "#F59E0B",
+    order: 42
+  },
+
   // --- DENSITY LAYERS (County-level aggregations) ---
   "1000+ Wheat Growers": {
     type: "density",
@@ -276,6 +311,10 @@ export const LAYER_GROUPS = {
   mkc: {
     label: 'MKC Locations',
     layers: ['MKC Grain', 'MKC Agronomy'],
+  },
+  rice_commercial: {
+    label: 'Rice Commercial',
+    layers: ['Riceland Co-op', 'Supreme Rice', 'Producers Rice Mill'],
   },
 };
 
