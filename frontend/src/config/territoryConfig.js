@@ -44,6 +44,13 @@ export const SALES_REPS = [
     states: ['North Dakota', 'Minnesota'],
     partialStates: {},
   },
+  {
+    id: 'darren',
+    name: 'Darren',
+    color: '#0E7490',
+    states: ['Arkansas', 'Louisiana', 'Mississippi', 'Tennessee', 'Kentucky'],
+    partialStates: {},
+  },
 ];
 
 // Get the rep who owns a given state (full ownership)

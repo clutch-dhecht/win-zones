@@ -66,7 +66,17 @@ const MapDashboard = ({ apiUrl }) => {
     allLayers.forEach(l => { newActive[l] = false; });
     if (marketKey && marketKey !== 'custom') {
       const preset = getMarketPreset(marketKey);
-      if (preset) preset.layers.forEach(l => { newActive[l] = true; });
+      if (preset) {
+        preset.layers.forEach(l => { newActive[l] = true; });
+        if (preset.enableTerritories) {
+          setTerritoriesEnabled(true);
+          if (preset.defaultReps) {
+            const reps = {};
+            SALES_REPS.forEach(r => { reps[r.id] = preset.defaultReps.includes(r.id); });
+            setVisibleReps(reps);
+          }
+        }
+      }
     }
     setActiveLayers(newActive);
   };
