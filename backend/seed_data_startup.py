@@ -402,21 +402,28 @@ async def _seed_rice_commercial(db, existing_set):
 
 
 async def _seed_hogs(db):
-    """Update 1000+ Hogs density data if current count is too low."""
-    """Update 1000+ Hogs density data if current count is too low."""
-    count = await db.density_data.count_documents({'layers.1000+ Hogs': {'$exists': True, '$gt': 0}})
-    if count >= 800:
-        return
+    """Seed/refresh 1000+ Hogs density data. Re-seeds when DB total != CSV total."""
     csv_path = SEED_DIR / 'hogs_1000plus.csv'
     if not csv_path.exists():
         return
-    logger.info("Seeding 1000+ Hogs density data...")
     df = pd.read_csv(csv_path)
     val_col = [c for c in df.columns if 'INVENTORY' in c.upper() or 'HOG' in c.upper()][0]
     df['State'] = df['State'].str.strip()
     df['County'] = df['County'].str.strip().str.upper()
     grouped = df.groupby(['State', 'County'])[val_col].sum().reset_index()
-    updated = 0
+    csv_total = int(grouped[val_col].sum())
+
+    pipeline = [
+        {'$match': {'layers.1000+ Hogs': {'$exists': True, '$gt': 0}}},
+        {'$group': {'_id': None, 'total': {'$sum': '$layers.1000+ Hogs'}}},
+    ]
+    agg = await db.density_data.aggregate(pipeline).to_list(length=1)
+    db_total = int(agg[0]['total']) if agg else 0
+    if db_total == csv_total:
+        return
+
+    logger.info(f"Seeding 1000+ Hogs density data (db_total={db_total}, csv_total={csv_total})...")
+    upserted = 0
     for _, row in grouped.iterrows():
         state = row['State'].strip()
         county = row['County'].strip().upper()
@@ -427,5 +434,11 @@ async def _seed_hogs(db):
         })
         if doc:
             await db.density_data.update_one({'_id': doc['_id']}, {'$set': {'layers.1000+ Hogs': value}})
-            updated += 1
-    logger.info(f"Seeded {updated} counties with 1000+ Hogs data")
+        else:
+            await db.density_data.insert_one({
+                'state': state.title(),
+                'county': county,
+                'layers': {'1000+ Hogs': value},
+            })
+        upserted += 1
+    logger.info(f"Seeded {upserted} counties with 1000+ Hogs data")
