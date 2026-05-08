@@ -37,6 +37,8 @@ const MARKET_PRESETS = {
       'Grain Elevators', 'CLS Customer Head Sheds', 'Grain Fumigation',
       '1000+ Rice Growers', 'Rice Acres',
     ],
+    enableTerritories: true,
+    defaultReps: ['darren'],
   },
   corn: {
     label: 'Corn',
