@@ -11,7 +11,7 @@ import WeightedWinZones from './WeightedWinZones';
 import SalesTerritories from './SalesTerritories';
 import { SALES_REPS, getRepStates } from '../config/territoryConfig';
 import { toast } from 'sonner';
-import { getLayerConfig } from '../config/layerConfig';
+import { getLayerConfig, LAYER_GROUPS } from '../config/layerConfig';
 import { ChevronDown, ChevronRight, Settings2 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 
@@ -75,8 +75,14 @@ const MapDashboard = ({ apiUrl }) => {
             SALES_REPS.forEach(r => { reps[r.id] = preset.defaultReps.includes(r.id); });
             setVisibleReps(reps);
           }
+        } else {
+          // Market does not auto-enable territories — clear any leakage from a prior preset
+          setTerritoriesEnabled(false);
         }
       }
+    } else {
+      // No market or custom — turn territories off so they don't leak across views
+      setTerritoriesEnabled(false);
     }
     setActiveLayers(newActive);
   };
@@ -267,6 +273,36 @@ const MapDashboard = ({ apiUrl }) => {
             pointData={filteredPointData}
             locationData={filteredLocationData}
             densityData={filteredDensityData}
+            onLayerToggle={(layerName) => {
+              setActiveLayers(prev => {
+                const next = { ...prev };
+                const group = Object.values(LAYER_GROUPS).find(g => g.summary === 'group' && ((g.layers || []).includes(layerName) || g.label === layerName));
+                if (group) {
+                  const turningOff = (group.layers || []).some(l => prev[l]);
+                  (group.layers || []).forEach(l => { next[l] = !turningOff; });
+                } else {
+                  next[layerName] = !prev[layerName];
+                }
+                return next;
+              });
+            }}
+            onLayerHideOthers={(layerName) => {
+              // Resolve the clicked card to the set of layers it represents
+              const group = Object.values(LAYER_GROUPS).find(g => g.summary === 'group' && ((g.layers || []).includes(layerName) || g.label === layerName));
+              const keepSet = new Set(group ? (group.layers || []) : [layerName]);
+              setActiveLayers(prev => {
+                const next = {};
+                Object.keys(prev).forEach(l => { next[l] = keepSet.has(l) ? true : false; });
+                // Make sure the kept layer(s) get turned on even if not currently in prev
+                keepSet.forEach(l => { next[l] = true; });
+                return next;
+              });
+            }}
+            onLayerResetMarket={() => {
+              if (activeMarket && activeMarket !== 'custom') {
+                handleMarketSelect(activeMarket);
+              }
+            }}
           />
         </div>
       )}
@@ -563,6 +599,8 @@ const MapDashboard = ({ apiUrl }) => {
             onMapZoom={(fn) => { mapZoomRef.current = fn; }}
             selectedStates={selectedStates}
             hasData={hasData}
+            gateByDensityLayers={activeMarket && activeMarket !== 'custom' ? (getMarketPreset(activeMarket)?.gateByDensityLayers || null) : null}
+            gateMode={activeMarket && activeMarket !== 'custom' ? (getMarketPreset(activeMarket)?.gateMode || 'any') : 'any'}
           />
         </div>
       </div>
