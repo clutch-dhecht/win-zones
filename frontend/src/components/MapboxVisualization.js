@@ -112,6 +112,7 @@ const MapboxVisualization = ({
   const [countiesGeoJSON, setCountiesGeoJSON] = useState(null);
   const [territoryBorderGeoJSON, setTerritoryBorderGeoJSON] = useState(null);
   const mapRef = useRef(null);
+  const hoistPendingRef = useRef(false);
 
   useEffect(() => {
     fetch(COUNTIES_SOURCE)
@@ -792,20 +793,30 @@ const MapboxVisualization = ({
             mapStyle={mapStyle} mapboxAccessToken={MAPBOX_TOKEN}
             style={{ width: '100%', height: '100%' }} cursor={cursor}
             onStyleData={() => {
-              // Hoist point/marker layers to the top of the layer stack on every styledata
-              // event so dots stay visible above the dark decile choropleth fills.
-              const map = mapRef.current?.getMap?.();
-              if (!map) return;
-              const POINT_LAYERS = [
-                'radius-fill', 'radius-outline',
-                'location-clusters', 'location-cluster-count', 'location-points-unclustered',
-                'clusters', 'cluster-count', 'city-markers-unclustered',
-              ];
-              POINT_LAYERS.forEach(id => {
-                if (map.getLayer && map.getLayer(id)) {
-                  try { map.moveLayer(id); } catch (e) { /* layer not yet ready */ }
-                }
-              });
+              // Hoist point/marker layers to the top of the stack so dots stay visible
+              // above dark choropleth fills. Debounced because moveLayer itself fires
+              // another styledata event (would otherwise infinite-loop).
+              if (hoistPendingRef.current) return;
+              hoistPendingRef.current = true;
+              setTimeout(() => {
+                hoistPendingRef.current = false;
+                const map = mapRef.current?.getMap?.();
+                if (!map || !map.getLayer) return;
+                const POINT_LAYERS = [
+                  'radius-fill', 'radius-outline',
+                  'location-clusters', 'location-cluster-count', 'location-points-unclustered',
+                  'clusters', 'cluster-count', 'city-markers-unclustered',
+                ];
+                // Only move if not already at end (skip work + avoid re-firing styledata)
+                const style = map.getStyle && map.getStyle();
+                const stack = style ? style.layers.map(l => l.id) : [];
+                const trailing = new Set(stack.slice(-POINT_LAYERS.length));
+                POINT_LAYERS.forEach(id => {
+                  if (map.getLayer(id) && !trailing.has(id)) {
+                    try { map.moveLayer(id); } catch (e) { /* not yet ready */ }
+                  }
+                });
+              }, 150);
             }}
           >
             <NavigationControl position="top-left" />

@@ -17,7 +17,34 @@ const PigIcon = ({ className }) => (
 
 const NUTRIEN_SUBLAYERS = ['Nutrien Retail', 'Nutrien Terminal', 'Nutrien Storage', 'Nutrien Office'];
 
+// Order here determines the tile grid (row-major, 3 columns).
+// Wheat ABM is row 0 col 0 and acts as the default preset on app load.
 const MARKET_PRESETS = {
+  wheat_abm: {
+    label: 'Wheat ABM',
+    icon: 'grain',
+    layers: [
+      'Aurora Coop', ...NUTRIEN_SUBLAYERS, 'Wilbur-Ellis', 'Helena Agri', 'Skyland Grain',
+      'CHS Grain', 'McGregor Locations', 'MKC Grain',
+      'CLS Customer Locations',
+      '1000+ Wheat Growers', 'Wheat Acres',
+    ],
+    gateByDensityLayers: ['1000+ Wheat Growers', 'Wheat Acres'],
+    gateMode: 'any',
+  },
+  rice_abm: {
+    label: 'Rice ABM',
+    icon: 'grain',
+    layers: [
+      'Riceland Co-op', 'Supreme Rice', 'Producers Rice Mill',
+      'Poinsett Rice & Grain', 'Farmers Rice', 'Triton Fumigation',
+      '1000+ Rice Growers', 'Rice Acres',
+    ],
+    gateByDensityLayers: ['1000+ Rice Growers', 'Rice Acres'],
+    gateMode: 'any',
+    enableTerritories: true,
+    defaultReps: ['darren'],
+  },
   wheat: {
     label: 'Wheat',
     icon: 'grain',
@@ -29,27 +56,6 @@ const MARKET_PRESETS = {
       'Aurora Coop', ...NUTRIEN_SUBLAYERS, 'Wilbur-Ellis', 'Helena Agri', 'Skyland Grain',
       '1000+ Wheat Growers', 'Wheat Acres',
     ],
-  },
-  wheat_molson_coors: {
-    label: 'Molson Coors',
-    icon: 'grain',
-    layers: [
-      'Molson Coors',
-      'CLS Customer Locations',
-      '1000+ Wheat Growers', 'Wheat Acres',
-    ],
-  },
-  wheat_abm: {
-    label: 'Wheat ABM',
-    icon: 'grain',
-    layers: [
-      'Aurora Coop', ...NUTRIEN_SUBLAYERS, 'Wilbur-Ellis', 'Helena Agri', 'Skyland Grain',
-      'CHS Grain', 'McGregor Locations', 'MKC Grain',
-      'CLS Customer Locations',
-      '1000+ Wheat Growers', 'Wheat Acres',
-    ],
-    gateByDensityLayers: ['1000+ Wheat Growers', 'Wheat Acres'],  // AND: hide points where BOTH are 0
-    gateMode: 'any',  // show point when ANY gate-layer value > 0 (hide when ALL gate layers are 0)
   },
   rice: {
     label: 'Rice',
@@ -65,18 +71,14 @@ const MARKET_PRESETS = {
     enableTerritories: true,
     defaultReps: ['darren'],
   },
-  rice_abm: {
-    label: 'Rice ABM',
+  wheat_molson_coors: {
+    label: 'Molson Coors',
     icon: 'grain',
     layers: [
-      'Riceland Co-op', 'Supreme Rice', 'Producers Rice Mill',
-      'Poinsett Rice & Grain', 'Farmers Rice', 'Triton Fumigation',
-      '1000+ Rice Growers', 'Rice Acres',
+      'Molson Coors',
+      'CLS Customer Locations',
+      '1000+ Wheat Growers', 'Wheat Acres',
     ],
-    gateByDensityLayers: ['1000+ Rice Growers', 'Rice Acres'],
-    gateMode: 'any',  // show point when ANY gate-layer value > 0 (hide when ALL gate layers are 0)
-    enableTerritories: true,
-    defaultReps: ['darren'],
   },
   corn: {
     label: 'Corn',
@@ -108,6 +110,9 @@ const MARKET_PRESETS = {
     ],
   },
 };
+
+// First market = default selection on app load
+export const DEFAULT_MARKET_KEY = 'wheat_abm';
 
 export const MARKET_KEYS = Object.keys(MARKET_PRESETS);
 export const getMarketPreset = (key) => MARKET_PRESETS[key];

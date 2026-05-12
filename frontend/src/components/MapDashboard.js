@@ -3,7 +3,7 @@ import axios from 'axios';
 import FileUpload from './FileUpload';
 import MapboxVisualization from './MapboxVisualization';
 import LayerControls from './LayerControls';
-import MarketViews, { getMarketPreset, detectActiveMarket } from './MarketViews';
+import MarketViews, { getMarketPreset, detectActiveMarket, DEFAULT_MARKET_KEY } from './MarketViews';
 import LayerStats from './LayerStats';
 import StateFilter from './StateFilter';
 import WinZoneCards from './WinZoneCards';
@@ -225,6 +225,18 @@ const MapDashboard = ({ apiUrl }) => {
   useEffect(() => {
     if (pointData.length > 0 || locationData.length > 0 || densityData.length > 0) fetchTopZones();
   }, [fetchTopZones, pointData, locationData, densityData]);
+
+  // Auto-select the default market once data is available and nothing is active yet
+  const defaultMarketAppliedRef = useRef(false);
+  useEffect(() => {
+    if (defaultMarketAppliedRef.current) return;
+    if (pointData.length === 0 && locationData.length === 0 && densityData.length === 0) return;
+    const anyActive = Object.values(activeLayers).some(Boolean);
+    if (anyActive) { defaultMarketAppliedRef.current = true; return; }
+    handleMarketSelect(DEFAULT_MARKET_KEY);
+    defaultMarketAppliedRef.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pointData, locationData, densityData]);
 
   const hasData = pointData.length > 0 || locationData.length > 0 || densityData.length > 0;
 
