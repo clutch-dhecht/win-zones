@@ -24,6 +24,12 @@ const FIPS_TO_STATE = {
   '54': 'West Virginia', '55': 'Wisconsin', '56': 'Wyoming'
 };
 
+// Renamed counties — keyed by post-normalization (space-collapsed) form
+// Maps current USDA name -> historical name in plotly GeoJSON
+const COUNTY_RENAMES = {
+  'OGLALALAKOTA': 'SHANNON',  // Renamed from Shannon in 2015 (SD)
+};
+
 const normalizeCountyName = (name) => {
   let n = name.toUpperCase().trim();
   n = n.replace(/ CITY$/, '');
@@ -32,6 +38,12 @@ const normalizeCountyName = (name) => {
   n = n.replace(/\./g, '').replace(/'/g, '').replace(/\u00D1/g, 'N').replace(/\u00F1/g, 'N');
   n = n.replace(/^DE /, 'DE').replace(/^LA /, 'LA').replace(/^LE /, 'LE');
   n = n.replace(/-/g, ' ');
+  // Collapse internal whitespace so USDA's apostrophe-as-space encoding matches
+  // GeoJSON's apostrophe-removed form: "O BRIEN" -> "OBRIEN" (matches "O'Brien")
+  // "DU PAGE" -> "DUPAGE" (matches "DuPage"), "ST CLAIR" -> "STCLAIR" (matches "St. Clair")
+  n = n.replace(/\s+/g, '');
+  // Renamed-county mapping
+  if (COUNTY_RENAMES[n]) n = COUNTY_RENAMES[n];
   return n;
 };
 
@@ -89,7 +101,9 @@ const MapboxVisualization = ({
   onEnrichedFeatures,
   onMapZoom,
   selectedStates,
-  hasData
+  hasData,
+  gateByDensityLayers = null,   // ['1000+ Rice Growers','Rice Acres']
+  gateMode = 'any',             // 'any' = at least one nonzero; 'all' = require ALL gates nonzero
 }) => {
   const [viewState, setViewState] = useState({ longitude: -97, latitude: 39, zoom: 4, pitch: 0, bearing: 0 });
   const [popupInfo, setPopupInfo] = useState(null);
@@ -195,12 +209,85 @@ const MapboxVisualization = ({
     return positions;
   }, [pointData, locationData, activeLayers]);
 
+  // Build a county-gate Set: keys = "STATE|COUNTY", entries = counties passing the gate test
+  // gateMode='any': show if ANY of gateByDensityLayers is > 0 in the county
+  // gateMode='all': show only if ALL of gateByDensityLayers are > 0
+  const countyGateSet = useMemo(() => {
+    if (!gateByDensityLayers || !gateByDensityLayers.length) return null;
+    if (!densityData || densityData.length === 0) return new Set();
+    const set = new Set();
+    for (const county of densityData) {
+      const vals = gateByDensityLayers.map(l => (county.layers && county.layers[l]) || 0);
+      const pass = gateMode === 'all' ? vals.every(v => v > 0) : vals.some(v => v > 0);
+      if (pass) {
+        const stateNorm = String(county.state || '').toUpperCase().trim();
+        const countyNorm = String(county.county || '').toUpperCase().trim();
+        set.add(`${stateNorm}|${countyNorm}`);
+      }
+    }
+    return set;
+  }, [gateByDensityLayers, gateMode, densityData]);
+
+  // Per-session cache: point coordinate string -> county_key ("STATE|COUNTY") or '__none__'
+  const pointCountyCache = useRef({});
+
+  // Simple point-in-polygon (ray-casting). polygon is [[lon,lat],...] (one ring).
+  const pointInRing = (lon, lat, ring) => {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const xi = ring[i][0], yi = ring[i][1];
+      const xj = ring[j][0], yj = ring[j][1];
+      const intersect = ((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi + 1e-12) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  };
+
+  // For a point, return its county_key by searching countiesGeoJSON (with state-prefilter + bbox).
+  const findCountyForPoint = (lon, lat) => {
+    if (!countiesGeoJSON) return null;
+    const key = `${lon.toFixed(5)},${lat.toFixed(5)}`;
+    if (pointCountyCache.current[key] !== undefined) return pointCountyCache.current[key];
+    for (const feat of countiesGeoJSON.features) {
+      // Quick bbox-reject
+      const geom = feat.geometry;
+      if (!geom) continue;
+      const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
+      let hit = false;
+      for (const poly of polys) {
+        const outer = poly[0];
+        // bbox
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const c of outer) {
+          if (c[0] < minX) minX = c[0]; if (c[0] > maxX) maxX = c[0];
+          if (c[1] < minY) minY = c[1]; if (c[1] > maxY) maxY = c[1];
+        }
+        if (lon < minX || lon > maxX || lat < minY || lat > maxY) continue;
+        if (pointInRing(lon, lat, outer)) { hit = true; break; }
+      }
+      if (hit) {
+        const st = String(feat.properties.state_name || feat.properties.STATE_NAME || '').toUpperCase().trim();
+        const ct = String(feat.properties.NAME || '').toUpperCase().trim();
+        const k = `${st}|${ct}`;
+        pointCountyCache.current[key] = k;
+        return k;
+      }
+    }
+    pointCountyCache.current[key] = '__none__';
+    return '__none__';
+  };
+
   // Build individual location points GeoJSON (one feature per location)
   const locationGeoJSON = useMemo(() => {
     if (!locationData || locationData.length === 0) return null;
     const features = [];
     locationData.forEach((loc, idx) => {
       if (!activeLayers[loc.layer]) return;
+      // County gating: hide if county not in gate set
+      if (countyGateSet) {
+        const ck = findCountyForPoint(loc.lon, loc.lat);
+        if (!ck || ck === '__none__' || !countyGateSet.has(ck)) return;
+      }
       features.push({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [loc.lon, loc.lat] },
@@ -224,7 +311,8 @@ const MapboxVisualization = ({
       });
     });
     return features.length > 0 ? { type: 'FeatureCollection', features } : null;
-  }, [locationData, activeLayers, layerColors]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locationData, activeLayers, layerColors, countyGateSet, countiesGeoJSON]);
 
   // Build aggregated city markers GeoJSON (CLS Customers)
   const cityMarkersGeoJSON = useMemo(() => {

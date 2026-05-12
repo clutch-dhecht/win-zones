@@ -3,7 +3,7 @@
 
 export const LAYER_CONFIG = {
   // --- POINT LAYERS (City-level data with lat/lon) ---
-  "CLS Customer Head Sheds": {
+  "CLS Customer Locations": {
     type: "point",
     radius: { enabled: true, default: 50, options: [25, 50, 100] },
     color: "#0369A1",
@@ -194,13 +194,106 @@ export const LAYER_CONFIG = {
     order: 34
   },
 
-  // --- NUTRIEN LOCATIONS ---
-  "Nutrien Locations": {
+  // --- NUTRIEN (sub-layers by type, single KPI card via group summary) ---
+  "Nutrien Retail": {
     type: "point",
+    group: "nutrien",
     radius: { enabled: false, default: 50, options: [25, 50, 100] },
     color: "#15803D",
     markerColor: "#15803D",
     order: 35
+  },
+  "Nutrien Terminal": {
+    type: "point",
+    group: "nutrien",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#166534",
+    markerColor: "#166534",
+    order: 36
+  },
+  "Nutrien Storage": {
+    type: "point",
+    group: "nutrien",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#14532D",
+    markerColor: "#14532D",
+    order: 37
+  },
+  "Nutrien Office": {
+    type: "point",
+    group: "nutrien",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#22C55E",
+    markerColor: "#22C55E",
+    order: 38
+  },
+
+  // --- WHEAT DEALERS (key-account ABM targets) ---
+  "Aurora Coop": {
+    type: "point",
+    group: "wheat_dealers",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#0EA5E9",
+    markerColor: "#0EA5E9",
+    order: 43
+  },
+  "Wilbur-Ellis": {
+    type: "point",
+    group: "wheat_dealers",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#10B981",
+    markerColor: "#10B981",
+    order: 44
+  },
+  "Helena Agri": {
+    type: "point",
+    group: "wheat_dealers",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#F59E0B",
+    markerColor: "#F59E0B",
+    order: 45
+  },
+  "Skyland Grain": {
+    type: "point",
+    group: "wheat_dealers",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#3B82F6",
+    markerColor: "#3B82F6",
+    order: 46
+  },
+
+  // --- RICE DEALERS (key-account ABM targets) ---
+  "Poinsett Rice & Grain": {
+    type: "point",
+    group: "rice_dealers",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#8B5CF6",
+    markerColor: "#8B5CF6",
+    order: 47
+  },
+  "Farmers Rice": {
+    type: "point",
+    group: "rice_dealers",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#A855F7",
+    markerColor: "#A855F7",
+    order: 48
+  },
+  "Triton Fumigation": {
+    type: "point",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#EF4444",
+    markerColor: "#EF4444",
+    order: 49
+  },
+
+  // --- MOLSON COORS (Wheat Molson Coors market) ---
+  "Molson Coors": {
+    type: "point",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#7C2D12",
+    markerColor: "#7C2D12",
+    order: 50
   },
 
   // --- RICE COMMERCIAL (sub-layers by company) ---
@@ -315,6 +408,19 @@ export const LAYER_GROUPS = {
   rice_commercial: {
     label: 'Rice Commercial',
     layers: ['Riceland Co-op', 'Supreme Rice', 'Producers Rice Mill'],
+  },
+  nutrien: {
+    label: 'Nutrien Locations',
+    layers: ['Nutrien Retail', 'Nutrien Terminal', 'Nutrien Storage', 'Nutrien Office'],
+    summary: 'group',  // render as a single KPI card showing combined count
+  },
+  wheat_dealers: {
+    label: 'Wheat Key Accounts',
+    layers: ['Aurora Coop', 'Wilbur-Ellis', 'Helena Agri', 'Skyland Grain'],
+  },
+  rice_dealers: {
+    label: 'Rice Key Accounts',
+    layers: ['Poinsett Rice & Grain', 'Farmers Rice'],
   },
 };
 

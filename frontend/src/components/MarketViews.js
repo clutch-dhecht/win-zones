@@ -15,6 +15,8 @@ const PigIcon = ({ className }) => (
   </svg>
 );
 
+const NUTRIEN_SUBLAYERS = ['Nutrien Retail', 'Nutrien Terminal', 'Nutrien Storage', 'Nutrien Office'];
+
 const MARKET_PRESETS = {
   wheat: {
     label: 'Wheat',
@@ -22,9 +24,32 @@ const MARKET_PRESETS = {
     layers: [
       'FSS Grain', 'FSS Flour Mills', 'FSS Specialty Mills', 'FSS Mix Plants',
       'Terminals SRW Wheat', 'Terminals HRW Wheat', 'Terminals HRS Wheat',
-      'CHS Grain', 'MKC Grain', 'McGregor Locations', 'Grain Elevators', 'CLS Customer Head Sheds', 'Grain Fumigation',
+      'CHS Grain', 'MKC Grain', 'McGregor Locations', 'Grain Elevators',
+      'CLS Customer Locations', 'Grain Fumigation',
+      'Aurora Coop', ...NUTRIEN_SUBLAYERS, 'Wilbur-Ellis', 'Helena Agri', 'Skyland Grain',
       '1000+ Wheat Growers', 'Wheat Acres',
     ],
+  },
+  wheat_molson_coors: {
+    label: 'Molson Coors',
+    icon: 'grain',
+    layers: [
+      'Molson Coors',
+      'CLS Customer Locations',
+      '1000+ Wheat Growers', 'Wheat Acres',
+    ],
+  },
+  wheat_abm: {
+    label: 'Wheat ABM',
+    icon: 'grain',
+    layers: [
+      'Aurora Coop', ...NUTRIEN_SUBLAYERS, 'Wilbur-Ellis', 'Helena Agri', 'Skyland Grain',
+      'CHS Grain', 'McGregor Locations', 'MKC Grain',
+      'CLS Customer Locations',
+      '1000+ Wheat Growers', 'Wheat Acres',
+    ],
+    gateByDensityLayers: ['1000+ Wheat Growers', 'Wheat Acres'],  // AND: hide points where BOTH are 0
+    gateMode: 'any',  // show point when ANY gate-layer value > 0 (hide when ALL gate layers are 0)
   },
   rice: {
     label: 'Rice',
@@ -32,11 +57,24 @@ const MARKET_PRESETS = {
     layers: [
       'FSS Grain', 'FSS Flour Mills', 'FSS Specialty Mills', 'FSS Mix Plants',
       'Terminals Rough Rice',
-      'Nutrien Locations',
       'Riceland Co-op', 'Supreme Rice', 'Producers Rice Mill',
-      'Grain Elevators', 'CLS Customer Head Sheds', 'Grain Fumigation',
+      'Poinsett Rice & Grain', 'Farmers Rice', 'Triton Fumigation',
+      'Grain Elevators', 'CLS Customer Locations', 'Grain Fumigation',
       '1000+ Rice Growers', 'Rice Acres',
     ],
+    enableTerritories: true,
+    defaultReps: ['darren'],
+  },
+  rice_abm: {
+    label: 'Rice ABM',
+    icon: 'grain',
+    layers: [
+      'Riceland Co-op', 'Supreme Rice', 'Producers Rice Mill',
+      'Poinsett Rice & Grain', 'Farmers Rice', 'Triton Fumigation',
+      '1000+ Rice Growers', 'Rice Acres',
+    ],
+    gateByDensityLayers: ['1000+ Rice Growers', 'Rice Acres'],
+    gateMode: 'any',  // show point when ANY gate-layer value > 0 (hide when ALL gate layers are 0)
     enableTerritories: true,
     defaultReps: ['darren'],
   },
@@ -46,7 +84,8 @@ const MARKET_PRESETS = {
     layers: [
       'FSS Grain', 'FSS Specialty Mills', 'FSS Mix Plants',
       'Terminals Corn & Soybean',
-      'CHS Grain', 'MKC Grain', 'McGregor Locations', 'Grain Elevators', 'CLS Customer Head Sheds', 'Grain Fumigation',
+      'CHS Grain', 'MKC Grain', 'McGregor Locations', 'Grain Elevators',
+      'CLS Customer Locations', 'Grain Fumigation',
       '1000+ Corn Growers', 'Corn Acres',
     ],
   },
@@ -55,7 +94,7 @@ const MARKET_PRESETS = {
     icon: 'hog',
     layers: [
       'Terminals Corn & Soybean', 'Terminals Soybean Oil', 'Terminals Soybean Meal',
-      'CLS Customer Head Sheds', 'Feed Manufacturers',
+      'CLS Customer Locations', 'Feed Manufacturers',
       'Corn Acres', '1000+ Hogs',
     ],
   },
@@ -63,7 +102,7 @@ const MARKET_PRESETS = {
     label: 'Alternative',
     icon: 'pest',
     layers: [
-      'CLS Customer Head Sheds', 'Grain Fumigation', 'Pest Control',
+      'CLS Customer Locations', 'Grain Fumigation', 'Pest Control',
       '1000+ Wheat Growers', '1000+ Corn Growers', '1000+ Rice Growers',
       'Farms with Grain Storage',
     ],
