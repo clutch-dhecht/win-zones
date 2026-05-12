@@ -583,9 +583,9 @@ const MapDashboard = ({ apiUrl }) => {
         {/* Map */}
         <div className="flex-grow relative h-full bg-stone-50 flex flex-col">
           <MapboxVisualization
-            pointData={pointData}
-            locationData={locationData}
-            densityData={densityData}
+            pointData={filteredPointData}
+            locationData={filteredLocationData}
+            densityData={filteredDensityData}
             activeLayers={activeLayers}
             radiusSettings={radiusSettings}
             layerColors={layerColors}

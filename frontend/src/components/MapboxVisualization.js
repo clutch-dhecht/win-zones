@@ -400,6 +400,44 @@ const MapboxVisualization = ({
       Object.entries(layers).forEach(([l, v]) => { if (!layerMaxes[l] || v > layerMaxes[l]) layerMaxes[l] = v; });
     });
 
+    // Decile cutoffs per layer — outlier-resistant percentile-rank normalization.
+    // When a state filter is active, deciles are computed only on those states' counties
+    // so the color distribution is local to what's visible ("spotlight" mode).
+    const layerDeciles = {};
+    Object.keys(layerMaxes).forEach(layer => {
+      // Collect nonzero values across counties — respect state filter when active
+      const values = [];
+      countiesGeoJSON.features.forEach(feat => {
+        const stateFips = feat.properties.STATE || '';
+        const stateName = FIPS_TO_STATE[stateFips] || '';
+        if (selectedStates && selectedStates.length > 0 && !selectedStates.includes(stateName)) return;
+        const ck = `${stateName}|${normalizeCountyName(feat.properties.NAME || '')}`;
+        const v = (dataLookup[ck] || {})[layer];
+        if (v && v > 0) values.push(v);
+      });
+      if (values.length < 10) {
+        // Fall back to log-normalized intensity when too few counties for deciles
+        layerDeciles[layer] = null;
+        return;
+      }
+      values.sort((a, b) => a - b);
+      // 10 thresholds: percentiles at 10, 20, ..., 90, 100
+      const cuts = [];
+      for (let i = 1; i <= 10; i++) {
+        const idx = Math.min(values.length - 1, Math.floor(values.length * i / 10));
+        cuts.push(values[idx]);
+      }
+      layerDeciles[layer] = cuts;
+    });
+
+    const valueToDecile = (value, cuts) => {
+      if (!cuts || value <= 0) return -1;
+      for (let i = 0; i < cuts.length; i++) {
+        if (value <= cuts[i]) return i;
+      }
+      return cuts.length - 1;
+    };
+
     const enrichedFeatures = countiesGeoJSON.features.map(feature => {
       const countyNorm = normalizeCountyName(feature.properties.NAME || '');
       const stateFips = feature.properties.STATE || '';
@@ -420,6 +458,8 @@ const MapboxVisualization = ({
         intensity = Math.min(intensity * 0.75, 0.8);
         extraProps[`val_${slug}`] = value;
         extraProps[`int_${slug}`] = intensity;
+        // Decile (0-9) — for the new 10-tier choropleth
+        extraProps[`dec_${slug}`] = valueToDecile(value, layerDeciles[layer]);
         totalAllLayers += value;
         layerBreakdown[layer] = value;
       });
@@ -464,7 +504,7 @@ const MapboxVisualization = ({
     });
 
     return { type: 'FeatureCollection', features: enrichedFeatures };
-  }, [countiesGeoJSON, densityData, activePointPositions, activeDensityLayers]);
+  }, [countiesGeoJSON, densityData, activePointPositions, activeDensityLayers, selectedStates]);
 
   // Extract win zone rankings
   useEffect(() => {
@@ -751,19 +791,53 @@ const MapboxVisualization = ({
             interactiveLayerIds={interactiveIds}
             mapStyle={mapStyle} mapboxAccessToken={MAPBOX_TOKEN}
             style={{ width: '100%', height: '100%' }} cursor={cursor}
+            onStyleData={() => {
+              // Hoist point/marker layers to the top of the layer stack on every styledata
+              // event so dots stay visible above the dark decile choropleth fills.
+              const map = mapRef.current?.getMap?.();
+              if (!map) return;
+              const POINT_LAYERS = [
+                'radius-fill', 'radius-outline',
+                'location-clusters', 'location-cluster-count', 'location-points-unclustered',
+                'clusters', 'cluster-count', 'city-markers-unclustered',
+              ];
+              POINT_LAYERS.forEach(id => {
+                if (map.getLayer && map.getLayer(id)) {
+                  try { map.moveLayer(id); } catch (e) { /* layer not yet ready */ }
+                }
+              });
+            }}
           >
             <NavigationControl position="top-left" />
 
-            {/* County choropleth */}
+            {/* County choropleth — 10-tier decile ramp (white -> yellow -> green) */}
             {hasDensityActive && enrichedCountiesGeoJSON && (
               <Source id="counties" type="geojson" data={enrichedCountiesGeoJSON}>
                 {activeDensityLayers.map(layer => {
                   const slug = slugify(layer);
+                  // White -> yellow -> lime -> green sequential ramp (10 tiers)
+                  const RAMP = [
+                    '#FFFFFF', // 0 — lowest (white)
+                    '#FEFCE8', // 1 — yellow-50
+                    '#FEF9C3', // 2 — yellow-100
+                    '#FEF08A', // 3 — yellow-200
+                    '#FDE047', // 4 — yellow-300
+                    '#FACC15', // 5 — yellow-400
+                    '#BEF264', // 6 — lime-300
+                    '#A3E635', // 7 — lime-400
+                    '#22C55E', // 8 — green-500
+                    '#15803D', // 9 — green-700 (highest)
+                  ];
+                  const fillColor = ['match', ['coalesce', ['get', `dec_${slug}`], -1],
+                    0, RAMP[0], 1, RAMP[1], 2, RAMP[2], 3, RAMP[3], 4, RAMP[4],
+                    5, RAMP[5], 6, RAMP[6], 7, RAMP[7], 8, RAMP[8], 9, RAMP[9],
+                    'rgba(0,0,0,0)' // -1: no data → transparent
+                  ];
                   return (
                     <Layer key={`county-fill-${slug}`} id={`county-fill-${slug}`} type="fill"
                       paint={{
-                        'fill-color': getDensityColor(layer, layerColors),
-                        'fill-opacity': ['case', ['>', ['coalesce', ['get', `int_${slug}`], 0], 0], ['get', `int_${slug}`], 0]
+                        'fill-color': fillColor,
+                        'fill-opacity': ['case', ['>=', ['coalesce', ['get', `dec_${slug}`], -1], 0], 0.85, 0]
                       }}
                     />
                   );
