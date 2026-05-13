@@ -181,6 +181,7 @@ async def seed_all(db):
         await _seed_rice_commercial(db, existing_set)
         await _seed_abm_locations(db, existing_set)
         await _seed_hogs(db)
+        await _dedup_cleanup(db)
 
         logger.info("Seed check complete")
     except Exception as e:
@@ -641,3 +642,195 @@ async def _seed_hogs(db):
             })
         upserted += 1
     logger.info(f"Seeded {upserted} counties with 1000+ Hogs data")
+
+
+# ─── DEDUP CLEANUP ─────────────────────────────────────────────────────────
+# Runtime dedup pass — runs on every backend startup but is idempotent: once
+# duplicates have been removed it produces zero further drops. Drops are
+# logged to the `deleted_dupes_audit` collection BEFORE deletion so the operation
+# is reversible. See data_exports/DUPLICATES_DELETIONS_PROPOSED.xlsx for the
+# rules and headline counts that were sanity-checked before deploy.
+
+DEDUP_LAYER_PRIO = {
+    'CLS Customer Locations': 0,
+    'Nutrien Retail': 1, 'Nutrien Terminal': 1, 'Nutrien Storage': 1, 'Nutrien Office': 1,
+    'Skyland Grain': 1, 'Helena Agri': 1, 'Wilbur-Ellis': 1, 'Aurora Coop': 1,
+    'MKC Grain': 1, 'CHS Grain': 1, 'McGregor Locations': 1,
+    'Riceland Co-op': 1, 'Supreme Rice': 1, 'Producers Rice Mill': 1,
+    'Poinsett Rice & Grain': 1, 'Farmers Rice': 1, 'Triton Fumigation': 1,
+    'Molson Coors': 1,
+    'CHS Agronomy': 2, 'MKC Agronomy': 2,
+    'Terminals SRW Wheat': 2, 'Terminals HRW Wheat': 2, 'Terminals HRS Wheat': 2,
+    'Terminals Rough Rice': 2, 'Terminals Corn & Soybean': 2,
+    'Terminals Soybean Oil': 2, 'Terminals Soybean Meal': 2, 'Terminals Oats': 2,
+    'FSS Grain': 3, 'FSS Flour Mills': 3, 'FSS Specialty Mills': 3, 'FSS Mix Plants': 3,
+    'Grain Elevators': 4,
+    'Grain Fumigation': 5,
+    'Feed Manufacturers': 6,
+    'Feed Stores': 7,
+    'Pest Control': 8,
+}
+DEDUP_DEFAULT_PRIO = 99
+
+DEDUP_EXPECTED_CO = {
+    frozenset(['CHS Grain', 'CHS Agronomy']),
+    frozenset(['MKC Grain', 'MKC Agronomy']),
+    frozenset(['Nutrien Retail', 'Nutrien Terminal']),
+    frozenset(['Nutrien Retail', 'Nutrien Storage']),
+    frozenset(['Nutrien Retail', 'Nutrien Office']),
+    frozenset(['Nutrien Terminal', 'Nutrien Storage']),
+    frozenset(['Nutrien Terminal', 'Nutrien Office']),
+    frozenset(['Nutrien Storage', 'Nutrien Office']),
+}
+
+
+def _dedup_norm_addr(s):
+    if not s:
+        return ''
+    s = str(s).upper().strip()
+    for a, b in [('STREET', 'ST'), ('AVENUE', 'AVE'), ('ROAD', 'RD'), ('HIGHWAY', 'HWY'),
+                 ('BOULEVARD', 'BLVD'), ('DRIVE', 'DR'), ('LANE', 'LN'), ('COURT', 'CT'),
+                 ('NORTH', 'N'), ('SOUTH', 'S'), ('EAST', 'E'), ('WEST', 'W')]:
+        s = re.sub(rf'\b{a}\b', b, s)
+    return re.sub(r'\s+', ' ', re.sub(r'[.,]', '', s)).strip()
+
+
+def _dedup_tokens(s):
+    return set(t for t in re.sub(r'[^A-Z0-9]+', ' ', str(s or '').upper()).split() if len(t) >= 2)
+
+
+def _dedup_jaccard(a, b):
+    sa, sb = _dedup_tokens(a), _dedup_tokens(b)
+    if not sa or not sb:
+        return 0
+    return len(sa & sb) / max(len(sa | sb), 1)
+
+
+def _dedup_completeness(p):
+    return sum(1 for v in p.values() if v not in (None, '', 'nan'))
+
+
+async def _dedup_cleanup(db):
+    """Drop duplicate location_points using a priority ladder + same-name rule.
+
+    Rules (per user spec):
+      - CLS Customer Locations is priority 0 — always wins
+      - Key-account layers (Nutrien*, Skyland, Helena, Wilbur-Ellis, Aurora,
+        MKC Grain, CHS Grain, McGregor, rice co-ops, Molson Coors) priority 1
+      - Terminals + CHS/MKC Agronomy priority 2
+      - FSS variants priority 3
+      - Grain Elevators 4, Fumigation 5, Feed Mfrs 6, Feed Stores 7, Pest Control 8
+      - Same address + different company names → KEEP BOTH (no drop)
+      - Intra-layer dupes (similar names + same address) → keep most-complete
+      - Expected multi-classifications (CHS Grain+Agronomy, MKC Grain+Agronomy,
+        Nutrien sub-types) → never deduped
+    """
+    from collections import defaultdict
+    from datetime import datetime, timezone
+
+    NAME_INTRA_THRESHOLD = 0.7
+    NAME_CROSS_THRESHOLD = 0.5
+
+    all_points = await db.location_points.find({}).to_list(length=None)
+    groups = defaultdict(list)
+    for p in all_points:
+        addr_n = _dedup_norm_addr(p.get('address') or '')
+        city_n = (p.get('city') or '').strip().upper()
+        state_n = (p.get('state') or '').strip().upper()
+        if addr_n and city_n and state_n:
+            p['_addr_n'] = addr_n
+            p['_city_n'] = city_n
+            p['_state_n'] = state_n
+            p['_name_for_match'] = p.get('name') or p.get('customer_name') or ''
+            p['_complete'] = _dedup_completeness(p)
+            groups[(city_n, state_n, addr_n)].append(p)
+
+    to_drop_ids = set()
+    drop_log = []
+
+    for key, items in groups.items():
+        if len(items) < 2:
+            continue
+        by_layer = defaultdict(list)
+        for p in items:
+            by_layer[p['layer']].append(p)
+
+        # Intra-layer pass
+        for layer, lst in by_layer.items():
+            if len(lst) < 2:
+                continue
+            clusters = []
+            for p in lst:
+                placed = False
+                for cl in clusters:
+                    if _dedup_jaccard(p['_name_for_match'], cl[0]['_name_for_match']) >= NAME_INTRA_THRESHOLD:
+                        cl.append(p)
+                        placed = True
+                        break
+                if not placed:
+                    clusters.append([p])
+            for cl in clusters:
+                if len(cl) < 2:
+                    continue
+                cl.sort(key=lambda p: (-p['_complete'], -len(p.get('name') or '')))
+                winner = cl[0]
+                for loser in cl[1:]:
+                    if loser['_id'] in to_drop_ids:
+                        continue
+                    to_drop_ids.add(loser['_id'])
+                    drop_log.append({
+                        'dropped_id': loser['_id'], 'dropped_layer': loser.get('layer'),
+                        'dropped_name': loser.get('name', ''),
+                        'dropped_city': loser.get('city', ''), 'dropped_state': loser.get('state', ''),
+                        'dropped_address': loser.get('address', ''),
+                        'tier': 'T1-intra',
+                        'winner_id': winner['_id'], 'winner_layer': winner.get('layer'),
+                        'winner_name': winner.get('name', ''),
+                        'reason': f"Same layer ({layer}), similar name, same address — kept most-complete",
+                        'dropped_record': {k: v for k, v in loser.items() if not k.startswith('_')},
+                    })
+
+        # Cross-layer pass — one canonical record per layer at this address
+        canonical = {layer: max(lst, key=lambda p: p['_complete']) for layer, lst in by_layer.items()}
+        layers_here = list(canonical.keys())
+        for i in range(len(layers_here)):
+            for j in range(i + 1, len(layers_here)):
+                la, lb = layers_here[i], layers_here[j]
+                if frozenset([la, lb]) in DEDUP_EXPECTED_CO:
+                    continue
+                a, b = canonical[la], canonical[lb]
+                if _dedup_jaccard(a['_name_for_match'], b['_name_for_match']) < NAME_CROSS_THRESHOLD:
+                    continue  # different businesses at same address — keep both
+                pa = DEDUP_LAYER_PRIO.get(la, DEDUP_DEFAULT_PRIO)
+                pb = DEDUP_LAYER_PRIO.get(lb, DEDUP_DEFAULT_PRIO)
+                if pa == pb:
+                    continue
+                winner_layer = la if pa < pb else lb
+                loser_layer = lb if winner_layer == la else la
+                winner_rec = canonical[winner_layer]
+                for loser in by_layer[loser_layer]:
+                    if loser['_id'] in to_drop_ids:
+                        continue
+                    to_drop_ids.add(loser['_id'])
+                    drop_log.append({
+                        'dropped_id': loser['_id'], 'dropped_layer': loser.get('layer'),
+                        'dropped_name': loser.get('name', ''),
+                        'dropped_city': loser.get('city', ''), 'dropped_state': loser.get('state', ''),
+                        'dropped_address': loser.get('address', ''),
+                        'tier': 'T3-cross',
+                        'winner_id': winner_rec['_id'], 'winner_layer': winner_rec.get('layer'),
+                        'winner_name': winner_rec.get('name', ''),
+                        'reason': f"Cross-layer same-address (prio {DEDUP_LAYER_PRIO.get(winner_layer)} {winner_layer} beats prio {DEDUP_LAYER_PRIO.get(loser_layer)} {loser_layer})",
+                        'dropped_record': {k: v for k, v in loser.items() if not k.startswith('_')},
+                    })
+
+    if not drop_log:
+        return  # idempotent — nothing to do
+
+    # Archive before deletion (reversibility net)
+    timestamp = datetime.now(timezone.utc).isoformat()
+    for entry in drop_log:
+        entry['archived_at'] = timestamp
+    await db.deleted_dupes_audit.insert_many(drop_log)
+    result = await db.location_points.delete_many({'_id': {'$in': list(to_drop_ids)}})
+    logger.info(f"Dedup cleanup: archived + deleted {result.deleted_count} duplicate location_points")

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import axios from 'axios';
 import FileUpload from './FileUpload';
 import MapboxVisualization from './MapboxVisualization';
@@ -6,6 +6,7 @@ import LayerControls from './LayerControls';
 import MarketViews, { getMarketPreset, detectActiveMarket, DEFAULT_MARKET_KEY } from './MarketViews';
 import LayerStats from './LayerStats';
 import StateFilter from './StateFilter';
+import SalesRepFilter from './SalesRepFilter';
 import WinZoneCards from './WinZoneCards';
 import WeightedWinZones from './WeightedWinZones';
 import SalesTerritories from './SalesTerritories';
@@ -36,6 +37,7 @@ const MapDashboard = ({ apiUrl }) => {
   const [showWeightedSettings, setShowWeightedSettings] = useState(false);
   const [showAdvancedWinZones, setShowAdvancedWinZones] = useState(false);
   const [selectedStates, setSelectedStates] = useState(null); // string[] | null
+  const [selectedRepIds, setSelectedRepIds] = useState(null); // string[] | null
   const [zoneFocus, setZoneFocus] = useState('regional'); // 'local' | 'regional' | 'territory'
   const [topZones, setTopZones] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -209,14 +211,23 @@ const MapDashboard = ({ apiUrl }) => {
         if (dLoaded.length > 0) { setDensityData(dLoaded); const s = new Set(); dLoaded.forEach(d => Object.keys(d.layers).forEach(l => s.add(l))); combined = [...combined, ...s]; }
         const unique = [...new Set(combined)];
         setAllLayers(unique);
-        // Default to Wheat market view on initial load
-        const wheatPreset = getMarketPreset('wheat');
+        // Default to Wheat ABM market view on initial load
+        const defaultPreset = getMarketPreset(DEFAULT_MARKET_KEY);
         const newActive = {};
         unique.forEach(l => { newActive[l] = false; });
-        if (wheatPreset) wheatPreset.layers.forEach(l => { if (unique.includes(l)) newActive[l] = true; });
+        if (defaultPreset) defaultPreset.layers.forEach(l => { if (unique.includes(l)) newActive[l] = true; });
         setActiveLayers(newActive);
         const { newRadius } = initLayerSettings(unique, newActive, {});
         setRadiusSettings(newRadius);
+        // Apply territory state per the default preset's policy
+        if (defaultPreset && defaultPreset.enableTerritories) {
+          setTerritoriesEnabled(true);
+          if (defaultPreset.defaultReps) {
+            const reps = {};
+            SALES_REPS.forEach(r => { reps[r.id] = defaultPreset.defaultReps.includes(r.id); });
+            setVisibleReps(reps);
+          }
+        }
       } catch (e) { console.error(e); }
     };
     loadExistingData();
@@ -240,16 +251,28 @@ const MapDashboard = ({ apiUrl }) => {
 
   const hasData = pointData.length > 0 || locationData.length > 0 || densityData.length > 0;
 
-  // Filter data by selected state for stats
-  const matchesStateFilter = (stateName) => {
+  // Filter data by selected state(s). MEMOIZED to keep the reference stable across
+  // re-renders — without this, .filter() creates a new array each render which
+  // cascades through the child useMemos and triggers an enrichedFeatures->setState
+  // feedback loop.
+  const matchesStateFilter = useCallback((stateName) => {
     if (!selectedStates || selectedStates.length === 0) return true;
-    const normalized = stateName.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    const normalized = String(stateName || '').trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
     return selectedStates.includes(normalized);
-  };
+  }, [selectedStates]);
 
-  const filteredPointData = selectedStates ? pointData.filter(d => matchesStateFilter(d.state)) : pointData;
-  const filteredLocationData = selectedStates ? locationData.filter(d => matchesStateFilter(d.state)) : locationData;
-  const filteredDensityData = selectedStates ? densityData.filter(d => matchesStateFilter(d.state)) : densityData;
+  const filteredPointData = useMemo(
+    () => selectedStates ? pointData.filter(d => matchesStateFilter(d.state)) : pointData,
+    [pointData, selectedStates, matchesStateFilter]
+  );
+  const filteredLocationData = useMemo(
+    () => selectedStates ? locationData.filter(d => matchesStateFilter(d.state)) : locationData,
+    [locationData, selectedStates, matchesStateFilter]
+  );
+  const filteredDensityData = useMemo(
+    () => selectedStates ? densityData.filter(d => matchesStateFilter(d.state)) : densityData,
+    [densityData, selectedStates, matchesStateFilter]
+  );
 
   const sidebarContent = (
     <>
@@ -265,14 +288,20 @@ const MapDashboard = ({ apiUrl }) => {
         </div>
       )}
 
-      {/* State Filter */}
+      {/* State + Sales Rep filters */}
       {hasData && (
-        <div className="px-4 py-2 border-b border-stone-100">
+        <div className="px-4 py-2 border-b border-stone-100 space-y-1.5">
           <StateFilter
             selectedStates={selectedStates}
             onStatesChange={setSelectedStates}
             densityData={densityData}
             locationData={locationData}
+          />
+          <SalesRepFilter
+            selectedRepIds={selectedRepIds}
+            onRepIdsChange={setSelectedRepIds}
+            onStatesChange={setSelectedStates}
+            selectedStates={selectedStates}
           />
         </div>
       )}

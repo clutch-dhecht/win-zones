@@ -222,7 +222,7 @@ const MapboxVisualization = ({
       const pass = gateMode === 'all' ? vals.every(v => v > 0) : vals.some(v => v > 0);
       if (pass) {
         const stateNorm = String(county.state || '').toUpperCase().trim();
-        const countyNorm = String(county.county || '').toUpperCase().trim();
+        const countyNorm = normalizeCountyName(String(county.county || ''));
         set.add(`${stateNorm}|${countyNorm}`);
       }
     }
@@ -267,8 +267,11 @@ const MapboxVisualization = ({
         if (pointInRing(lon, lat, outer)) { hit = true; break; }
       }
       if (hit) {
-        const st = String(feat.properties.state_name || feat.properties.STATE_NAME || '').toUpperCase().trim();
-        const ct = String(feat.properties.NAME || '').toUpperCase().trim();
+        // state_name is only on enriched features; raw counties GeoJSON only has STATE (FIPS).
+        const stateFromProps = feat.properties.state_name || feat.properties.STATE_NAME;
+        const stateFromFips = FIPS_TO_STATE[feat.properties.STATE] || '';
+        const st = String(stateFromProps || stateFromFips || '').toUpperCase().trim();
+        const ct = normalizeCountyName(String(feat.properties.NAME || ''));
         const k = `${st}|${ct}`;
         pointCountyCache.current[key] = k;
         return k;
@@ -989,9 +992,9 @@ const MapboxVisualization = ({
               </Source>
             )}
 
-            {/* Individual location points with clustering */}
+            {/* Individual location points with clustering — clustering disabled when a state filter is active so individual pins show through */}
             {locationGeoJSON && (
-              <Source id="location-source" type="geojson" data={locationGeoJSON} cluster={true} clusterMaxZoom={11} clusterRadius={18}>
+              <Source id="location-source" type="geojson" data={locationGeoJSON} cluster={!selectedStates || selectedStates.length === 0} clusterMaxZoom={11} clusterRadius={18}>
                 <Layer id="location-clusters" type="circle" filter={['has', 'point_count']} paint={{
                   'circle-color': ['step', ['get', 'point_count'], '#57534E', 20, '#44403C', 100, '#292524', 500, '#1C1917'],
                   'circle-radius': ['step', ['get', 'point_count'], 11, 20, 14, 100, 18, 500, 22],
@@ -1011,9 +1014,9 @@ const MapboxVisualization = ({
               </Source>
             )}
 
-            {/* Aggregated city markers (CLS Customers) */}
+            {/* Aggregated city markers (CLS Customers) — clustering off under state filter */}
             {cityMarkersGeoJSON && (
-              <Source id="city-markers-source" type="geojson" data={cityMarkersGeoJSON} cluster={true} clusterMaxZoom={12} clusterRadius={50}>
+              <Source id="city-markers-source" type="geojson" data={cityMarkersGeoJSON} cluster={!selectedStates || selectedStates.length === 0} clusterMaxZoom={12} clusterRadius={50}>
                 <Layer id="clusters" type="circle" filter={['has', 'point_count']} paint={{
                   'circle-color': ['step', ['get', 'point_count'], '#0369A1', 10, '#075985', 50, '#0C4A6E'],
                   'circle-radius': ['step', ['get', 'point_count'], 16, 10, 22, 50, 28],
