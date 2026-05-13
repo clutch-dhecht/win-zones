@@ -104,6 +104,7 @@ const MapboxVisualization = ({
   hasData,
   gateByDensityLayers = null,   // ['1000+ Rice Growers','Rice Acres']
   gateMode = 'any',             // 'any' = at least one nonzero; 'all' = require ALL gates nonzero
+  spotlightCountyKeys = null,   // Set<"STATE|COUNTY"> | null — restrict choropleth + pins to these counties
 }) => {
   const [viewState, setViewState] = useState({ longitude: -97, latitude: 39, zoom: 4, pitch: 0, bearing: 0 });
   const [popupInfo, setPopupInfo] = useState(null);
@@ -232,6 +233,31 @@ const MapboxVisualization = ({
   // Per-session cache: point coordinate string -> county_key ("STATE|COUNTY") or '__none__'
   const pointCountyCache = useRef({});
 
+  // Pre-computed per-polygon bboxes, indexed by feature index then polygon index.
+  // Computing bboxes inline during point-in-polygon was making spotlight unusable
+  // (re-walking all coords for every poly for every point = ~billions of ops).
+  // This memo builds them once when the GeoJSON loads.
+  const countyBboxIndex = useMemo(() => {
+    if (!countiesGeoJSON) return null;
+    return countiesGeoJSON.features.map(feat => {
+      const geom = feat.geometry;
+      if (!geom) return [];
+      const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
+      return polys.map(poly => {
+        const outer = poly[0];
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (let i = 0; i < outer.length; i++) {
+          const c = outer[i];
+          if (c[0] < minX) minX = c[0];
+          if (c[0] > maxX) maxX = c[0];
+          if (c[1] < minY) minY = c[1];
+          if (c[1] > maxY) maxY = c[1];
+        }
+        return [minX, minY, maxX, maxY];
+      });
+    });
+  }, [countiesGeoJSON]);
+
   // Simple point-in-polygon (ray-casting). polygon is [[lon,lat],...] (one ring).
   const pointInRing = (lon, lat, ring) => {
     let inside = false;
@@ -244,27 +270,23 @@ const MapboxVisualization = ({
     return inside;
   };
 
-  // For a point, return its county_key by searching countiesGeoJSON (with state-prefilter + bbox).
+  // For a point, return its county_key by searching countiesGeoJSON (cached + bbox-prefiltered).
   const findCountyForPoint = (lon, lat) => {
-    if (!countiesGeoJSON) return null;
+    if (!countiesGeoJSON || !countyBboxIndex) return null;
     const key = `${lon.toFixed(5)},${lat.toFixed(5)}`;
     if (pointCountyCache.current[key] !== undefined) return pointCountyCache.current[key];
-    for (const feat of countiesGeoJSON.features) {
-      // Quick bbox-reject
+    const features = countiesGeoJSON.features;
+    for (let fi = 0; fi < features.length; fi++) {
+      const feat = features[fi];
       const geom = feat.geometry;
       if (!geom) continue;
       const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
+      const bboxes = countyBboxIndex[fi];
       let hit = false;
-      for (const poly of polys) {
-        const outer = poly[0];
-        // bbox
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        for (const c of outer) {
-          if (c[0] < minX) minX = c[0]; if (c[0] > maxX) maxX = c[0];
-          if (c[1] < minY) minY = c[1]; if (c[1] > maxY) maxY = c[1];
-        }
+      for (let pi = 0; pi < polys.length; pi++) {
+        const [minX, minY, maxX, maxY] = bboxes[pi];
         if (lon < minX || lon > maxX || lat < minY || lat > maxY) continue;
-        if (pointInRing(lon, lat, outer)) { hit = true; break; }
+        if (pointInRing(lon, lat, polys[pi][0])) { hit = true; break; }
       }
       if (hit) {
         // state_name is only on enriched features; raw counties GeoJSON only has STATE (FIPS).
@@ -287,10 +309,15 @@ const MapboxVisualization = ({
     const features = [];
     locationData.forEach((loc, idx) => {
       if (!activeLayers[loc.layer]) return;
-      // County gating: hide if county not in gate set
+      // County gating: hide if county not in gate set (ABM markets)
       if (countyGateSet) {
         const ck = findCountyForPoint(loc.lon, loc.lat);
         if (!ck || ck === '__none__' || !countyGateSet.has(ck)) return;
+      }
+      // Win-zone spotlight: hide if county not in spotlight set
+      if (spotlightCountyKeys) {
+        const ck = findCountyForPoint(loc.lon, loc.lat);
+        if (!ck || ck === '__none__' || !spotlightCountyKeys.has(ck)) return;
       }
       features.push({
         type: 'Feature',
@@ -316,7 +343,7 @@ const MapboxVisualization = ({
     });
     return features.length > 0 ? { type: 'FeatureCollection', features } : null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locationData, activeLayers, layerColors, countyGateSet, countiesGeoJSON]);
+  }, [locationData, activeLayers, layerColors, countyGateSet, countiesGeoJSON, spotlightCountyKeys]);
 
   // Build aggregated city markers GeoJSON (CLS Customers)
   const cityMarkersGeoJSON = useMemo(() => {
@@ -462,7 +489,6 @@ const MapboxVisualization = ({
         intensity = Math.min(intensity * 0.75, 0.8);
         extraProps[`val_${slug}`] = value;
         extraProps[`int_${slug}`] = intensity;
-        // Decile (0-9) — for the new 10-tier choropleth
         extraProps[`dec_${slug}`] = valueToDecile(value, layerDeciles[layer]);
         totalAllLayers += value;
         layerBreakdown[layer] = value;
@@ -509,6 +535,22 @@ const MapboxVisualization = ({
 
     return { type: 'FeatureCollection', features: enrichedFeatures };
   }, [countiesGeoJSON, densityData, activePointPositions, activeDensityLayers, selectedStates]);
+
+  // Mapbox expression that returns true for counties in the spotlight set.
+  // Kept separate from enrichedCountiesGeoJSON so toggling spotlight doesn't recompute
+  // the whole enrichment (which would feedback-loop through onEnrichedFeatures).
+  // Uses `match` (which reliably handles arrays of labels) rather than `in`.
+  const spotlightExpr = useMemo(() => {
+    if (!spotlightCountyKeys || spotlightCountyKeys.size === 0) return null;
+    const keys = Array.from(spotlightCountyKeys);
+    return [
+      'match',
+      ['concat', ['upcase', ['coalesce', ['get', 'state_name'], '']], '|', ['upcase', ['coalesce', ['get', 'NAME'], '']]],
+      keys,    // any of these → true
+      true,
+      false,   // anything else → false
+    ];
+  }, [spotlightCountyKeys]);
 
   // Extract win zone rankings
   useEffect(() => {
@@ -851,7 +893,12 @@ const MapboxVisualization = ({
                     <Layer key={`county-fill-${slug}`} id={`county-fill-${slug}`} type="fill"
                       paint={{
                         'fill-color': fillColor,
-                        'fill-opacity': ['case', ['>=', ['coalesce', ['get', `dec_${slug}`], -1], 0], 0.85, 0]
+                        'fill-opacity': spotlightExpr
+                          ? ['case',
+                              ['!', spotlightExpr], 0,                               // outside spotlight → invisible
+                              ['>=', ['coalesce', ['get', `dec_${slug}`], -1], 0], 0.85,
+                              0]
+                          : ['case', ['>=', ['coalesce', ['get', `dec_${slug}`], -1], 0], 0.85, 0]
                       }}
                     />
                   );
@@ -869,7 +916,12 @@ const MapboxVisualization = ({
                     : winZonesEnabled === 'market'
                     ? ['interpolate', ['linear'], ['coalesce', ['get', 'market_score'], 0], 0, 'rgba(0,0,0,0)', 0.05, 'rgba(0,0,0,0)', 0.15, '#DCFCE7', 0.3, '#86EFAC', 0.5, '#22C55E', 0.7, '#15803D', 0.9, '#14532D']
                     : ['interpolate', ['linear'], ['coalesce', ['get', 'win_score'], 0], 0, 'rgba(0,0,0,0)', 0.05, 'rgba(0,0,0,0)', 0.15, '#FEF3C7', 0.3, '#FBBF24', 0.5, '#F97316', 0.7, '#DC2626', 0.9, '#991B1B'],
-                  'fill-opacity': ['case', ['>', ['coalesce', ['get', winZonesEnabled === 'coverage' ? 'coverage_strength' : winZonesEnabled === 'market' ? 'market_score' : 'win_score'], 0], 0.05], 0.6, 0]
+                  'fill-opacity': spotlightExpr
+                    ? ['case',
+                        ['!', spotlightExpr], 0,
+                        ['>', ['coalesce', ['get', winZonesEnabled === 'coverage' ? 'coverage_strength' : winZonesEnabled === 'market' ? 'market_score' : 'win_score'], 0], 0.05], 0.6,
+                        0]
+                    : ['case', ['>', ['coalesce', ['get', winZonesEnabled === 'coverage' ? 'coverage_strength' : winZonesEnabled === 'market' ? 'market_score' : 'win_score'], 0], 0.05], 0.6, 0]
                 }} />
               </Source>
             )}
