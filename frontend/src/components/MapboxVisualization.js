@@ -853,6 +853,10 @@ const MapboxVisualization = ({
                 const map = mapRef.current?.getMap?.();
                 if (!map || !map.getLayer) return;
                 const POINT_LAYERS = [
+                  // Territory casing FIRST (renders first, so colored line above it),
+                  // then the colored border, then pins on top.
+                  'territory-border-casing',
+                  'territory-border-line',
                   'radius-fill', 'radius-outline',
                   'location-clusters', 'location-cluster-count', 'location-points-unclustered',
                   'clusters', 'cluster-count', 'city-markers-unclustered',
@@ -996,7 +1000,9 @@ const MapboxVisualization = ({
               </Source>
             )}
 
-            {/* Sales Territory Overlay — fill from counties */}
+            {/* Sales Territory Overlay — county-level fill kept much lighter so the
+                state-level rep borders stay the dominant visual cue. Was 0.15 which
+                looked busy whenever it co-existed with the decile choropleth. */}
             {territoryGeoJSON && (
               <Source id="territory-overlay" type="geojson" data={territoryGeoJSON}>
                 <Layer
@@ -1004,7 +1010,7 @@ const MapboxVisualization = ({
                   type="fill"
                   paint={{
                     'fill-color': ['get', 'rep_color'],
-                    'fill-opacity': 0.15
+                    'fill-opacity': 0.04
                   }}
                 />
               </Source>
@@ -1022,6 +1028,17 @@ const MapboxVisualization = ({
                     'fill-opacity': 0.35
                   }}
                 />
+                {/* White casing underneath the colored border so it pops against the choropleth */}
+                <Layer
+                  id="territory-border-casing"
+                  type="line"
+                  filter={['==', ['get', 'is_unassigned'], false]}
+                  paint={{
+                    'line-color': '#FFFFFF',
+                    'line-width': ['interpolate', ['linear'], ['zoom'], 3, 6, 6, 8, 10, 10],
+                    'line-opacity': 0.85,
+                  }}
+                />
                 <Layer
                   id="territory-border-line"
                   type="line"
@@ -1029,7 +1046,7 @@ const MapboxVisualization = ({
                   paint={{
                     'line-color': ['get', 'rep_color'],
                     'line-width': ['interpolate', ['linear'], ['zoom'], 3, 3.5, 6, 5, 10, 6.5],
-                    'line-opacity': 0.95,
+                    'line-opacity': 1,
                   }}
                 />
               </Source>
