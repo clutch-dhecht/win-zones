@@ -433,6 +433,22 @@ async def _seed_mcgregor(db, existing_set):
 
 
 async def _seed_nutrien(db, existing_set):
+    # RETIRED: The legacy single-layer "Nutrien Locations" was replaced by the
+    # 4-tier Nutrien Retail/Terminal/Storage/Office split when the ABM workbook
+    # landed (PR #4). Re-seeding it would just create cross-layer duplicates
+    # the dedup pass has to clean up on every restart. Guard: if any of the
+    # new Nutrien sub-layers exist, skip the legacy import entirely.
+    new_nutrien_count = await db.location_points.count_documents({
+        'layer': {'$in': ['Nutrien Retail', 'Nutrien Terminal', 'Nutrien Storage', 'Nutrien Office']}
+    })
+    if new_nutrien_count > 0:
+        # Also clean up any stale legacy "Nutrien Locations" rows that may exist
+        legacy = await db.location_points.count_documents({'layer': 'Nutrien Locations'})
+        if legacy > 0:
+            await db.location_points.delete_many({'layer': 'Nutrien Locations'})
+            logger.info(f"Cleaned {legacy} legacy 'Nutrien Locations' records (replaced by Nutrien sub-layers)")
+        return
+
     if 'Nutrien Locations' in existing_set:
         count = await db.location_points.count_documents({'layer': 'Nutrien Locations'})
         if count >= 50:
@@ -824,8 +840,189 @@ async def _dedup_cleanup(db):
                         'dropped_record': {k: v for k, v in loser.items() if not k.startswith('_')},
                     })
 
+    # ─── T4 pass: same company + same city, different/missing addresses ───
+    # For each (normalized_company, city, state) group:
+    #   - Bucket real-address records by numeric-fuzzy address match
+    #     ("332 AR-212" ≡ "332 Hwy. 212 E.")
+    #   - Records within a bucket → same physical facility (dedup, intra-layer or cross)
+    #   - No-real-address records (empty or P.O. Box only):
+    #     * If exactly one address bucket exists → pair with it
+    #     * If multiple address buckets → ambiguous, skip
+    # CLS Customer Locations is excluded (customer_name distinguishes records that
+    # share name+city+state — same ship-to, different customers).
+    PO_BOX_RE = re.compile(r'\b(P\s*\.?\s*O\s*\.?\s*BOX|POBOX|PO\s*BOX)\b', re.IGNORECASE)
+
+    def _is_real_addr(a):
+        if not a or not str(a).strip(): return False
+        s = str(a).strip()
+        if PO_BOX_RE.match(s): return False
+        if PO_BOX_RE.search(s) and len(s) < 30: return False
+        return True
+
+    def _addr_num_key(a):
+        nums = re.findall(r'\d+', str(a or ''))
+        return tuple(sorted(int(n) for n in nums if len(n) >= 2))
+
+    def _addr_fuzzy_match(a, b):
+        ka, kb = _addr_num_key(a), _addr_num_key(b)
+        return ka and kb and ka == kb
+
+    def _norm_company(name):
+        if not name: return ''
+        s = re.sub(r'[^A-Za-z0-9 ]+', ' ', str(name))
+        s = re.sub(r'\s+', ' ', s).strip().upper()
+        for suf in (' INCORPORATED', ' INC', ' LLC', ' LP', ' LLP',
+                    ' CORP', ' CORPORATION', ' CO', ' COMPANY'):
+            if s.endswith(suf):
+                s = s[:-len(suf)].strip()
+        return s
+
+    # Re-fetch the (possibly shrunk) point set after T1/T3 drops
+    remaining_ids = set(p['_id'] for p in all_points) - to_drop_ids
+    remaining = [p for p in all_points if p['_id'] in remaining_ids and p.get('layer') != 'CLS Customer Locations']
+
+    t4_groups = defaultdict(list)
+    for p in remaining:
+        c = _norm_company(p.get('name') or '')
+        city = (p.get('city') or '').strip().upper()
+        state = (p.get('state') or '').strip().upper()
+        if c and city and state:
+            t4_groups[(c, city, state)].append(p)
+
+    # Track address merges to apply to winners (winner_id -> address_to_set)
+    addr_merges = {}
+
+    for (company, city, state), items in t4_groups.items():
+        if len(items) < 2:
+            continue
+        real_items = [p for p in items if _is_real_addr(p.get('address'))]
+        no_real_items = [p for p in items if not _is_real_addr(p.get('address'))]
+
+        facility_buckets = []
+        for p in real_items:
+            placed = False
+            for bucket in facility_buckets:
+                if _addr_fuzzy_match(bucket[0].get('address'), p.get('address')):
+                    bucket.append(p)
+                    placed = True
+                    break
+            if not placed:
+                facility_buckets.append([p])
+
+        # Intra-bucket dedup (same physical place)
+        for bucket in facility_buckets:
+            if len(bucket) < 2:
+                continue
+            bucket.sort(key=lambda p: (DEDUP_LAYER_PRIO.get(p['layer'], DEDUP_DEFAULT_PRIO),
+                                       -_dedup_completeness(p)))
+            winner = bucket[0]
+            for loser in bucket[1:]:
+                if loser['_id'] in to_drop_ids:
+                    continue
+                if frozenset([winner['layer'], loser['layer']]) in DEDUP_EXPECTED_CO:
+                    continue
+                to_drop_ids.add(loser['_id'])
+                drop_log.append({
+                    'dropped_id': loser['_id'], 'dropped_layer': loser.get('layer'),
+                    'dropped_name': loser.get('name', ''),
+                    'dropped_city': loser.get('city', ''), 'dropped_state': loser.get('state', ''),
+                    'dropped_address': loser.get('address', ''),
+                    'tier': 'T4-same-facility',
+                    'winner_id': winner['_id'], 'winner_layer': winner.get('layer'),
+                    'winner_name': winner.get('name', ''),
+                    'reason': f"Same company ({company}) at same physical address (numeric-fuzzy), {city} {state}",
+                    'dropped_record': {k: v for k, v in loser.items() if not k.startswith('_')},
+                })
+
+        # No-real records
+        if no_real_items:
+            if len(facility_buckets) == 0:
+                sorted_nr = sorted(no_real_items,
+                                   key=lambda p: (DEDUP_LAYER_PRIO.get(p['layer'], DEDUP_DEFAULT_PRIO),
+                                                  -_dedup_completeness(p)))
+                winner = sorted_nr[0]
+                for loser in sorted_nr[1:]:
+                    if loser['_id'] in to_drop_ids: continue
+                    if frozenset([winner['layer'], loser['layer']]) in DEDUP_EXPECTED_CO: continue
+                    to_drop_ids.add(loser['_id'])
+                    drop_log.append({
+                        'dropped_id': loser['_id'], 'dropped_layer': loser.get('layer'),
+                        'dropped_name': loser.get('name', ''),
+                        'dropped_city': loser.get('city', ''), 'dropped_state': loser.get('state', ''),
+                        'dropped_address': loser.get('address', ''),
+                        'tier': 'T4-no-address',
+                        'winner_id': winner['_id'], 'winner_layer': winner.get('layer'),
+                        'winner_name': winner.get('name', ''),
+                        'reason': f"Same company ({company}), no real address on either side, {city} {state}",
+                        'dropped_record': {k: v for k, v in loser.items() if not k.startswith('_')},
+                    })
+            elif len(facility_buckets) == 1:
+                bucket = facility_buckets[0]
+                sb = sorted(bucket, key=lambda p: (DEDUP_LAYER_PRIO.get(p['layer'], DEDUP_DEFAULT_PRIO),
+                                                   -_dedup_completeness(p)))
+                for nr in no_real_items:
+                    contenders = sb + [nr]
+                    contenders.sort(key=lambda p: (DEDUP_LAYER_PRIO.get(p['layer'], DEDUP_DEFAULT_PRIO),
+                                                   -_dedup_completeness(p)))
+                    winner = contenders[0]
+                    loser = nr if winner['_id'] != nr['_id'] else sb[0]
+                    if winner['_id'] == loser['_id']: continue
+                    if loser['_id'] in to_drop_ids: continue
+                    if frozenset([winner['layer'], loser['layer']]) in DEDUP_EXPECTED_CO: continue
+                    merge_addr = None
+                    if not _is_real_addr(winner.get('address')) and _is_real_addr(loser.get('address')):
+                        merge_addr = loser.get('address')
+                        # Only set if winner doesn't already have a pending real address from another merge
+                        if winner['_id'] not in addr_merges:
+                            addr_merges[winner['_id']] = merge_addr
+                    to_drop_ids.add(loser['_id'])
+                    drop_log.append({
+                        'dropped_id': loser['_id'], 'dropped_layer': loser.get('layer'),
+                        'dropped_name': loser.get('name', ''),
+                        'dropped_city': loser.get('city', ''), 'dropped_state': loser.get('state', ''),
+                        'dropped_address': loser.get('address', ''),
+                        'tier': 'T4-no-real-paired',
+                        'winner_id': winner['_id'], 'winner_layer': winner.get('layer'),
+                        'winner_name': winner.get('name', ''),
+                        'reason': f"Same company ({company}) in {city} {state}; no-address paired with single facility",
+                        'dropped_record': {k: v for k, v in loser.items() if not k.startswith('_')},
+                    })
+            # else: multiple real-address buckets + no-real → AMBIGUOUS, leave alone
+
     if not drop_log:
         return  # idempotent — nothing to do
+
+    # Deduplicate drop_log by dropped_id (a record might be flagged by multiple paths)
+    seen_log_ids = set()
+    unique_log = []
+    for entry in drop_log:
+        rid = entry['dropped_id']
+        if rid in seen_log_ids:
+            continue
+        seen_log_ids.add(rid)
+        unique_log.append(entry)
+    drop_log = unique_log
+
+    # Only keep entries for records that still exist in the collection
+    # (guards against archiving phantom IDs across restart cascades)
+    existing_cursor = db.location_points.find(
+        {'_id': {'$in': list(to_drop_ids)}}, {'_id': 1}
+    )
+    existing_ids = {doc['_id'] async for doc in existing_cursor}
+    drop_log = [e for e in drop_log if e['dropped_id'] in existing_ids]
+    to_drop_ids = existing_ids
+
+    if not drop_log:
+        return  # everything already gone
+
+    # Apply address merges first (so the winners keep the inherited address)
+    for winner_id, addr in addr_merges.items():
+        if winner_id in to_drop_ids:
+            continue  # winner is itself being dropped — skip
+        await db.location_points.update_one(
+            {'_id': winner_id},
+            {'$set': {'address': addr}},
+        )
 
     # Archive before deletion (reversibility net)
     timestamp = datetime.now(timezone.utc).isoformat()
@@ -833,4 +1030,5 @@ async def _dedup_cleanup(db):
         entry['archived_at'] = timestamp
     await db.deleted_dupes_audit.insert_many(drop_log)
     result = await db.location_points.delete_many({'_id': {'$in': list(to_drop_ids)}})
-    logger.info(f"Dedup cleanup: archived + deleted {result.deleted_count} duplicate location_points")
+    logger.info(f"Dedup cleanup: archived + deleted {result.deleted_count} duplicate location_points "
+                f"({len(addr_merges)} winners gained an address)")
