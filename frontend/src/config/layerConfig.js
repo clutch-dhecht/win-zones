@@ -194,7 +194,7 @@ export const LAYER_CONFIG = {
     order: 34
   },
 
-  // --- NUTRIEN (sub-layers by type, single KPI card via group summary) ---
+  // --- NUTRIEN (sub-layers by type; all share one color since they render as a single KPI) ---
   "Nutrien Retail": {
     type: "point",
     group: "nutrien",
@@ -207,24 +207,24 @@ export const LAYER_CONFIG = {
     type: "point",
     group: "nutrien",
     radius: { enabled: false, default: 50, options: [25, 50, 100] },
-    color: "#166534",
-    markerColor: "#166534",
+    color: "#15803D",
+    markerColor: "#15803D",
     order: 36
   },
   "Nutrien Storage": {
     type: "point",
     group: "nutrien",
     radius: { enabled: false, default: 50, options: [25, 50, 100] },
-    color: "#14532D",
-    markerColor: "#14532D",
+    color: "#15803D",
+    markerColor: "#15803D",
     order: 37
   },
   "Nutrien Office": {
     type: "point",
     group: "nutrien",
     radius: { enabled: false, default: 50, options: [25, 50, 100] },
-    color: "#22C55E",
-    markerColor: "#22C55E",
+    color: "#15803D",
+    markerColor: "#15803D",
     order: 38
   },
 
