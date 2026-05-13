@@ -80,6 +80,15 @@ const DENSITY_LAYERS = [
   'Wheat Acres', 'Corn Acres', 'Rice Acres', 'Farms with Grain Storage',
 ];
 
+// Must match MapDashboard.js COVERAGE_THRESHOLD. A county must have at least
+// this fraction of its area inside the radius union to credit any growers.
+const COVERAGE_THRESHOLD = 0.5;
+
+// Bumped whenever the math changes in a way that invalidates cached entries.
+// The runtime checks `e.mathVersion === 'v3'` before serving from the cache,
+// so any drift between this version and the runtime is auto-detected.
+const MATH_VERSION = 'v3';
+
 const COUNTY_RENAMES_LOCAL = { 'OGLALALAKOTA': 'SHANNON' };
 const normalizeCountyName = (name) => {
   let n = String(name || '').toUpperCase().trim();
@@ -313,6 +322,10 @@ function computeForMarket(marketKey, locationRows, densityRows, countiesGeoJSON)
     if (ratio > 0) {
       withRatioGt0++;
       if (ratio >= 0.999) withRatioEq1++;
+    }
+    // Conservative gate: counties below the threshold credit zero; at/above,
+    // credit ratio × growers. Mirrors MapDashboard.computeCoverageMetrics.
+    if (ratio >= COVERAGE_THRESHOLD) {
       DENSITY_LAYERS.forEach(l => {
         const v = c.layers[l];
         if (typeof v === 'number' && v > 0) covered[l] += v * ratio;
@@ -339,6 +352,8 @@ function computeForMarket(marketKey, locationRows, densityRows, countiesGeoJSON)
     countiesWithRatioGt0: withRatioGt0,
     countiesWithRatioEq1: withRatioEq1,
     intersectErrors,
+    coverageThreshold: COVERAGE_THRESHOLD,
+    mathVersion: MATH_VERSION,
     covered: display,
     canonicalTotals: totalsDisplay,
   };

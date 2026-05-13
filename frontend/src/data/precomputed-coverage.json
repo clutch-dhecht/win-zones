@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-13T20:36:58.617Z",
+  "generatedAt": "2026-05-13T23:54:34.758Z",
   "entries": [
     {
       "market": "wheat_abm",
@@ -10,9 +10,11 @@
       "countiesWithRatioGt0": 1198,
       "countiesWithRatioEq1": 1078,
       "intersectErrors": 0,
+      "coverageThreshold": 0.5,
+      "mathVersion": "v3",
       "covered": {
-        "1000+ Wheat Growers": 23037,
-        "1000+ Corn Growers": 27483,
+        "1000+ Wheat Growers": 23008,
+        "1000+ Corn Growers": 27476,
         "1000+ Rice Growers": 493,
         "1000+ Hogs": 5066,
         "Wheat Acres": 0,
@@ -40,11 +42,13 @@
       "countiesWithRatioGt0": 277,
       "countiesWithRatioEq1": 260,
       "intersectErrors": 0,
+      "coverageThreshold": 0.5,
+      "mathVersion": "v3",
       "covered": {
         "1000+ Wheat Growers": 894,
-        "1000+ Corn Growers": 3175,
+        "1000+ Corn Growers": 3173,
         "1000+ Rice Growers": 1558,
-        "1000+ Hogs": 72,
+        "1000+ Hogs": 70,
         "Wheat Acres": 0,
         "Corn Acres": 0,
         "Rice Acres": 0,
