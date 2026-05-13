@@ -1,0 +1,65 @@
+{
+  "generatedAt": "2026-05-13T20:36:58.617Z",
+  "entries": [
+    {
+      "market": "wheat_abm",
+      "radius": 75,
+      "visiblePinsCount": 1608,
+      "canonicalCountiesCount": 1207,
+      "missingGeometry": 29,
+      "countiesWithRatioGt0": 1198,
+      "countiesWithRatioEq1": 1078,
+      "intersectErrors": 0,
+      "covered": {
+        "1000+ Wheat Growers": 23037,
+        "1000+ Corn Growers": 27483,
+        "1000+ Rice Growers": 493,
+        "1000+ Hogs": 5066,
+        "Wheat Acres": 0,
+        "Corn Acres": 0,
+        "Rice Acres": 0,
+        "Farms with Grain Storage": 0
+      },
+      "canonicalTotals": {
+        "1000+ Wheat Growers": 23194,
+        "1000+ Corn Growers": 27568,
+        "1000+ Rice Growers": 494,
+        "1000+ Hogs": 5069,
+        "Wheat Acres": 0,
+        "Corn Acres": 0,
+        "Rice Acres": 0,
+        "Farms with Grain Storage": 0
+      }
+    },
+    {
+      "market": "rice_abm",
+      "radius": 75,
+      "visiblePinsCount": 242,
+      "canonicalCountiesCount": 303,
+      "missingGeometry": 1,
+      "countiesWithRatioGt0": 277,
+      "countiesWithRatioEq1": 260,
+      "intersectErrors": 0,
+      "covered": {
+        "1000+ Wheat Growers": 894,
+        "1000+ Corn Growers": 3175,
+        "1000+ Rice Growers": 1558,
+        "1000+ Hogs": 72,
+        "Wheat Acres": 0,
+        "Corn Acres": 0,
+        "Rice Acres": 0,
+        "Farms with Grain Storage": 0
+      },
+      "canonicalTotals": {
+        "1000+ Wheat Growers": 916,
+        "1000+ Corn Growers": 3234,
+        "1000+ Rice Growers": 1574,
+        "1000+ Hogs": 82,
+        "Wheat Acres": 0,
+        "Corn Acres": 0,
+        "Rice Acres": 0,
+        "Farms with Grain Storage": 0
+      }
+    }
+  ]
+}

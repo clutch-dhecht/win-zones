@@ -106,6 +106,7 @@ const MapboxVisualization = ({
   gateMode = 'any',             // 'any' = at least one nonzero; 'all' = require ALL gates nonzero
   spotlightCountyKeys = null,   // Set<"STATE|COUNTY"> | null — restrict choropleth + pins to these counties
   onCountiesLoaded = null,      // called once when the counties GeoJSON has loaded — used by parent for rep county spotlight
+  coverageRadiusMiles = 0,      // when > 0, draw a coverage circle of this radius around each visible pin
 }) => {
   const [viewState, setViewState] = useState({ longitude: -97, latitude: 39, zoom: 4, pitch: 0, bearing: 0 });
   const [popupInfo, setPopupInfo] = useState(null);
@@ -412,6 +413,31 @@ const MapboxVisualization = ({
 
     return features.length > 0 ? { type: 'FeatureCollection', features } : null;
   }, [pointData, locationData, activeLayers, radiusSettings, layerColors]);
+
+  // Coverage circles around every visible pin. Always returns a FeatureCollection
+  // (empty when off) so the Mapbox Source/Layer stay mounted and don't shuffle
+  // their stack position on every market switch.
+  const coverageGeoJSON = useMemo(() => {
+    const features = [];
+    if (coverageRadiusMiles && coverageRadiusMiles > 0) {
+      (locationData || []).forEach(loc => {
+        if (!activeLayers[loc.layer]) return;
+        if (typeof loc.lat !== 'number' || typeof loc.lon !== 'number') return;
+        // Mirror the same filters as locationGeoJSON so circles match pins.
+        if (countyGateSet) {
+          const ck = findCountyForPoint(loc.lon, loc.lat);
+          if (!ck || ck === '__none__' || !countyGateSet.has(ck)) return;
+        }
+        if (spotlightCountyKeys) {
+          const ck = findCountyForPoint(loc.lon, loc.lat);
+          if (!ck || ck === '__none__' || !spotlightCountyKeys.has(ck)) return;
+        }
+        features.push(circle([loc.lon, loc.lat], coverageRadiusMiles, { steps: 32, units: 'miles' }));
+      });
+    }
+    return { type: 'FeatureCollection', features };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locationData, activeLayers, coverageRadiusMiles, countyGateSet, spotlightCountyKeys, countiesGeoJSON]);
 
   // Enriched county choropleth + win zone scores
   const enrichedCountiesGeoJSON = useMemo(() => {
@@ -853,6 +879,9 @@ const MapboxVisualization = ({
                 const map = mapRef.current?.getMap?.();
                 if (!map || !map.getLayer) return;
                 const POINT_LAYERS = [
+                  // Coverage fills sit between choropleth and territory borders, but
+                  // above the choropleth so the blue tint is visible.
+                  'coverage-fill', 'coverage-outline',
                   // Territory casing FIRST (renders first, so colored line above it),
                   // then the colored border, then pins on top.
                   'territory-border-casing',
@@ -861,12 +890,22 @@ const MapboxVisualization = ({
                   'location-clusters', 'location-cluster-count', 'location-points-unclustered',
                   'clusters', 'cluster-count', 'city-markers-unclustered',
                 ];
-                // Only move if not already at end (skip work + avoid re-firing styledata)
+                // Find the highest-stacked choropleth fill — every POINT_LAYER must sit
+                // ABOVE this index. Using a position check (rather than "is it in the
+                // trailing N") correctly re-hoists when a market switch adds new
+                // county-fill-* layers on top after the last styledata pass.
                 const style = map.getStyle && map.getStyle();
                 const stack = style ? style.layers.map(l => l.id) : [];
-                const trailing = new Set(stack.slice(-POINT_LAYERS.length));
+                let maxChoroIdx = -1;
+                stack.forEach((id, i) => {
+                  if (id.startsWith('county-fill-') || id === 'win-zone-fill') {
+                    if (i > maxChoroIdx) maxChoroIdx = i;
+                  }
+                });
                 POINT_LAYERS.forEach(id => {
-                  if (map.getLayer(id) && !trailing.has(id)) {
+                  if (!map.getLayer(id)) return;
+                  const idx = stack.indexOf(id);
+                  if (idx === -1 || idx < maxChoroIdx) {
                     try { map.moveLayer(id); } catch (e) { /* not yet ready */ }
                   }
                 });
@@ -1064,7 +1103,16 @@ const MapboxVisualization = ({
               <Layer id="canada-lines" type="line" paint={{ 'line-color': '#1C1917', 'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1.4, 6, 2.2, 10, 3], 'line-opacity': 0.7 }} />
             </Source>
 
-            {/* Radius circles */}
+            {/* Coverage radius circles (global toggle). Overlapping fills produce
+                a visual "merged" coverage area without needing turf.union.
+                Source is ALWAYS mounted (empty FeatureCollection when off) so
+                the layer keeps its stack position across market switches. */}
+            <Source id="coverage-circles" type="geojson" data={coverageGeoJSON}>
+              <Layer id="coverage-fill" type="fill" paint={{ 'fill-color': '#0EA5E9', 'fill-opacity': 0.22 }} />
+              <Layer id="coverage-outline" type="line" paint={{ 'line-color': '#0284C7', 'line-width': 0.8, 'line-opacity': 0.45 }} />
+            </Source>
+
+            {/* Radius circles (per-layer feature, separate from top-level coverage toggle) */}
             {radiusGeoJSON && (
               <Source id="radius-circles" type="geojson" data={radiusGeoJSON}>
                 <Layer id="radius-fill" type="fill" paint={{ 'fill-color': radiusColorExpr, 'fill-opacity': 0.12 }} />
