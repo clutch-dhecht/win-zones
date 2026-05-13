@@ -1,5 +1,12 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { LAYER_GROUPS } from '../config/layerConfig';
+import { LAYER_GROUPS, LAYER_CONFIG } from '../config/layerConfig';
+
+// Resolve the user-facing label for a layer or group. Uses LAYER_CONFIG.displayLabel
+// (per-layer override) or falls back to the layer/group key.
+const labelFor = (key) => {
+  const cfg = LAYER_CONFIG[key];
+  return (cfg && cfg.displayLabel) || key;
+};
 
 // Format large numbers: 37118790 → "37.1M", 25711 → "25,711", 63 → "63"
 const formatStat = (value) => {
@@ -87,7 +94,9 @@ const LayerStats = ({
       } else {
         const value = counts[layer] || 0;
         if (value > 0 || presetLayers) {
-          cards.push({ key: layer, displayLayer: layer, value, active: !!activeLayers[layer] });
+          // `key` is the underlying layer identifier (used by toggle handlers);
+          // `displayLayer` is the user-facing label shown on the card.
+          cards.push({ key: layer, displayLayer: labelFor(layer), value, active: !!activeLayers[layer] });
         }
       }
     });
@@ -107,11 +116,11 @@ const LayerStats = ({
             <button
               key={key}
               type="button"
-              onClick={clickable ? () => onLayerToggle(displayLayer) : undefined}
+              onClick={clickable ? () => onLayerToggle(key) : undefined}
               onContextMenu={clickable ? (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                setMenu({ layer: displayLayer, x: e.clientX, y: e.clientY });
+                setMenu({ layer: key, displayLayer, x: e.clientX, y: e.clientY });
               } : undefined}
               className={`border rounded-lg px-2 py-2 text-center transition-all w-full ${
                 active
@@ -144,7 +153,7 @@ const LayerStats = ({
           onClick={(e) => e.stopPropagation()}
           data-testid="layer-context-menu"
         >
-          <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-stone-400 border-b border-stone-100 truncate">{menu.layer}</div>
+          <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-stone-400 border-b border-stone-100 truncate">{menu.displayLayer || menu.layer}</div>
           <button type="button"
             onClick={() => { onLayerToggle && onLayerToggle(menu.layer); setMenu(null); }}
             className="w-full text-left px-3 py-1.5 hover:bg-stone-100 text-stone-700"

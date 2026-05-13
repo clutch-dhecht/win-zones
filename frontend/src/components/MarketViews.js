@@ -42,6 +42,7 @@ const MARKET_PRESETS = {
     layers: [
       'Riceland Co-op', 'Supreme Rice', 'Producers Rice Mill',
       'Poinsett Rice & Grain', 'Farmers Rice', 'Triton Fumigation',
+      'Helena Agri', ...NUTRIEN_SUBLAYERS,
       '1000+ Rice Growers', 'Rice Acres',
     ],
     gateByDensityLayers: ['1000+ Rice Growers', 'Rice Acres'],

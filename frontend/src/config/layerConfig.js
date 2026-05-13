@@ -191,7 +191,8 @@ export const LAYER_CONFIG = {
     radius: { enabled: false, default: 50, options: [25, 50, 100] },
     color: "#0F766E",
     markerColor: "#0F766E",
-    order: 34
+    order: 34,
+    displayLabel: "McGregor"
   },
 
   // --- NUTRIEN (sub-layers by type; all share one color since they render as a single KPI) ---
@@ -410,7 +411,7 @@ export const LAYER_GROUPS = {
     layers: ['Riceland Co-op', 'Supreme Rice', 'Producers Rice Mill'],
   },
   nutrien: {
-    label: 'Nutrien Locations',
+    label: 'Nutrien',
     layers: ['Nutrien Retail', 'Nutrien Terminal', 'Nutrien Storage', 'Nutrien Office'],
     summary: 'group',  // render as a single KPI card showing combined count
   },
