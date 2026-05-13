@@ -40,6 +40,7 @@ const MapDashboard = ({ apiUrl }) => {
   const [showAdvancedWinZones, setShowAdvancedWinZones] = useState(false);
   const [selectedStates, setSelectedStates] = useState(null); // string[] | null
   const [selectedRepIds, setSelectedRepIds] = useState(null); // string[] | null
+  const [countiesGeoJSON, setCountiesGeoJSON] = useState(null); // fetched once, used for rep-county lat-split
   const [zoneFocus, setZoneFocus] = useState('regional'); // 'local' | 'regional' | 'territory'
   const [topZones, setTopZones] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -82,11 +83,25 @@ const MapDashboard = ({ apiUrl }) => {
         } else {
           setTerritoriesEnabled(false);
         }
+        // Auto-apply rep filter spotlight when the preset specifies one
+        if (preset.defaultRepIds && preset.defaultRepIds.length > 0) {
+          setSelectedRepIds(preset.defaultRepIds);
+          // Also sync the state filter to the union of these reps' states
+          const stateUnion = new Set();
+          preset.defaultRepIds.forEach(id => getRepStates(id).forEach(s => stateUnion.add(s)));
+          setSelectedStates(stateUnion.size > 0 ? Array.from(stateUnion) : null);
+        } else {
+          // Clear rep filter when switching to a market that doesn't specify one
+          setSelectedRepIds(null);
+          setSelectedStates(null);
+        }
       }
       setSelectedMarketKey(marketKey);
     } else {
       setTerritoriesEnabled(false);
       setSelectedMarketKey(null);
+      setSelectedRepIds(null);
+      setSelectedStates(null);
     }
     setActiveLayers(newActive);
   };
@@ -226,7 +241,7 @@ const MapDashboard = ({ apiUrl }) => {
         setSelectedMarketKey(DEFAULT_MARKET_KEY);
         const { newRadius } = initLayerSettings(unique, newActive, {});
         setRadiusSettings(newRadius);
-        // Apply territory state per the default preset's policy
+        // Apply territory + rep-filter state per the default preset's policy
         if (defaultPreset && defaultPreset.enableTerritories) {
           setTerritoriesEnabled(true);
           if (defaultPreset.defaultReps) {
@@ -234,6 +249,12 @@ const MapDashboard = ({ apiUrl }) => {
             SALES_REPS.forEach(r => { reps[r.id] = defaultPreset.defaultReps.includes(r.id); });
             setVisibleReps(reps);
           }
+        }
+        if (defaultPreset && defaultPreset.defaultRepIds && defaultPreset.defaultRepIds.length > 0) {
+          setSelectedRepIds(defaultPreset.defaultRepIds);
+          const stateUnion = new Set();
+          defaultPreset.defaultRepIds.forEach(id => getRepStates(id).forEach(s => stateUnion.add(s)));
+          setSelectedStates(stateUnion.size > 0 ? Array.from(stateUnion) : null);
         }
       } catch (e) { console.error(e); }
     };
@@ -243,6 +264,16 @@ const MapDashboard = ({ apiUrl }) => {
   useEffect(() => {
     if (pointData.length > 0 || locationData.length > 0 || densityData.length > 0) fetchTopZones();
   }, [fetchTopZones, pointData, locationData, densityData]);
+
+  // Keep the territory overlay (visibleReps) in sync with the rep filter
+  // (selectedRepIds). When the user removes a rep from the filter, their
+  // territory fill and border should disappear from the overlay too.
+  useEffect(() => {
+    if (!selectedRepIds) return;
+    const reps = {};
+    SALES_REPS.forEach(r => { reps[r.id] = selectedRepIds.includes(r.id); });
+    setVisibleReps(reps);
+  }, [selectedRepIds]);
 
   // Auto-select the default market once data is available and nothing is active yet
   const defaultMarketAppliedRef = useRef(false);
@@ -284,12 +315,87 @@ const MapDashboard = ({ apiUrl }) => {
   // Win-zone spotlight county set — memoized so the Set reference is stable across
   // renders. Without this, MapboxVisualization useMemo deps see a "new" Set every
   // parent render and feedback-loop through onEnrichedFeatures.
-  const spotlightCountyKeys = useMemo(() => {
+  const winZoneSpotlightKeys = useMemo(() => {
     if (!winZoneSpotlight || !winZones || winZones.length === 0) return null;
     const keys = new Set();
     winZones.forEach(z => (z.countyIds || []).forEach(k => keys.add(String(k).toUpperCase())));
     return keys.size > 0 ? keys : null;
   }, [winZoneSpotlight, winZones]);
+
+  // Rep-filter county spotlight — built from countiesGeoJSON so Montana's lat split
+  // is honored (Matthew = north of 47.5, Laramie = south).
+  const FIPS_TO_STATE_NAME = useMemo(() => ({
+    "01":"Alabama","02":"Alaska","04":"Arizona","05":"Arkansas","06":"California","08":"Colorado","09":"Connecticut","10":"Delaware",
+    "11":"District of Columbia","12":"Florida","13":"Georgia","15":"Hawaii","16":"Idaho","17":"Illinois","18":"Indiana","19":"Iowa",
+    "20":"Kansas","21":"Kentucky","22":"Louisiana","23":"Maine","24":"Maryland","25":"Massachusetts","26":"Michigan","27":"Minnesota",
+    "28":"Mississippi","29":"Missouri","30":"Montana","31":"Nebraska","32":"Nevada","33":"New Hampshire","34":"New Jersey","35":"New Mexico",
+    "36":"New York","37":"North Carolina","38":"North Dakota","39":"Ohio","40":"Oklahoma","41":"Oregon","42":"Pennsylvania","44":"Rhode Island",
+    "45":"South Carolina","46":"South Dakota","47":"Tennessee","48":"Texas","49":"Utah","50":"Vermont","51":"Virginia","53":"Washington",
+    "54":"West Virginia","55":"Wisconsin","56":"Wyoming"
+  }), []);
+
+  const repSpotlightKeys = useMemo(() => {
+    if (!selectedRepIds || selectedRepIds.length === 0 || !countiesGeoJSON) return null;
+    const reps = selectedRepIds.map(id => SALES_REPS.find(r => r.id === id)).filter(Boolean);
+    if (reps.length === 0) return null;
+    // Index counties by state for fast lookup
+    const fullStates = new Set();
+    const partialStateRules = {}; // stateName -> [{rule, latThreshold}]
+    reps.forEach(rep => {
+      (rep.states || []).forEach(s => fullStates.add(s));
+      Object.entries(rep.partialStates || {}).forEach(([s, def]) => {
+        if (fullStates.has(s)) return; // full coverage trumps partial
+        if (!partialStateRules[s]) partialStateRules[s] = [];
+        partialStateRules[s].push(def);
+      });
+    });
+    const keys = new Set();
+    countiesGeoJSON.features.forEach(feat => {
+      const stateName = FIPS_TO_STATE_NAME[feat.properties.STATE];
+      if (!stateName) return;
+      const countyName = feat.properties.NAME || '';
+      const key = `${stateName.toUpperCase()}|${countyName.toUpperCase()}`;
+      if (fullStates.has(stateName)) {
+        keys.add(key);
+        return;
+      }
+      const partials = partialStateRules[stateName];
+      if (!partials) return;
+      // Compute a rough centroid for lat check
+      const geom = feat.geometry;
+      if (!geom) return;
+      const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
+      let sumLat = 0, count = 0;
+      for (const poly of polys) {
+        for (const c of poly[0]) {
+          sumLat += c[1];
+          count++;
+          if (count >= 50) break;
+        }
+        if (count >= 50) break;
+      }
+      const lat = count > 0 ? sumLat / count : null;
+      if (lat === null) return;
+      for (const p of partials) {
+        if ((p.rule === 'south' && lat < p.latThreshold) ||
+            (p.rule === 'north' && lat >= p.latThreshold)) {
+          keys.add(key);
+          break;
+        }
+      }
+    });
+    return keys.size > 0 ? keys : null;
+  }, [selectedRepIds, countiesGeoJSON, FIPS_TO_STATE_NAME]);
+
+  // Combine win-zone and rep spotlights via intersection. Null on any side passes through.
+  const spotlightCountyKeys = useMemo(() => {
+    if (!winZoneSpotlightKeys && !repSpotlightKeys) return null;
+    if (!winZoneSpotlightKeys) return repSpotlightKeys;
+    if (!repSpotlightKeys) return winZoneSpotlightKeys;
+    const out = new Set();
+    repSpotlightKeys.forEach(k => { if (winZoneSpotlightKeys.has(k)) out.add(k); });
+    return out;
+  }, [winZoneSpotlightKeys, repSpotlightKeys]);
 
   const sidebarContent = (
     <>
@@ -677,6 +783,7 @@ const MapDashboard = ({ apiUrl }) => {
             hasData={hasData}
             gateByDensityLayers={activeMarket && activeMarket !== 'custom' ? (getMarketPreset(activeMarket)?.gateByDensityLayers || null) : null}
             spotlightCountyKeys={spotlightCountyKeys}
+            onCountiesLoaded={setCountiesGeoJSON}
             gateMode={activeMarket && activeMarket !== 'custom' ? (getMarketPreset(activeMarket)?.gateMode || 'any') : 'any'}
           />
         </div>

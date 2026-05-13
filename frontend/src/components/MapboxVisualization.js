@@ -105,6 +105,7 @@ const MapboxVisualization = ({
   gateByDensityLayers = null,   // ['1000+ Rice Growers','Rice Acres']
   gateMode = 'any',             // 'any' = at least one nonzero; 'all' = require ALL gates nonzero
   spotlightCountyKeys = null,   // Set<"STATE|COUNTY"> | null — restrict choropleth + pins to these counties
+  onCountiesLoaded = null,      // called once when the counties GeoJSON has loaded — used by parent for rep county spotlight
 }) => {
   const [viewState, setViewState] = useState({ longitude: -97, latitude: 39, zoom: 4, pitch: 0, bearing: 0 });
   const [popupInfo, setPopupInfo] = useState(null);
@@ -118,8 +119,12 @@ const MapboxVisualization = ({
   useEffect(() => {
     fetch(COUNTIES_SOURCE)
       .then(res => res.json())
-      .then(data => setCountiesGeoJSON(data))
+      .then(data => {
+        setCountiesGeoJSON(data);
+        if (onCountiesLoaded) onCountiesLoaded(data);
+      })
       .catch(err => console.error('Error loading counties GeoJSON:', err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Build dissolved territory border from US states GeoJSON (one MultiPolygon per rep)
@@ -871,14 +876,16 @@ const MapboxVisualization = ({
               <Source id="counties" type="geojson" data={enrichedCountiesGeoJSON}>
                 {activeDensityLayers.map(layer => {
                   const slug = slugify(layer);
-                  // White -> yellow -> lime -> green sequential ramp (10 tiers)
+                  // Light cream -> yellow -> lime -> green sequential ramp (10 tiers).
+                  // Tier 0 is a visible cream (not pure white) so counties with low-but-nonzero
+                  // values can be distinguished from counties with no data (transparent).
                   const RAMP = [
-                    '#FFFFFF', // 0 — lowest (white)
-                    '#FEFCE8', // 1 — yellow-50
-                    '#FEF9C3', // 2 — yellow-100
-                    '#FEF08A', // 3 — yellow-200
-                    '#FDE047', // 4 — yellow-300
-                    '#FACC15', // 5 — yellow-400
+                    '#FFFBE6', // 0 — cream (lowest with data)
+                    '#FEF9C3', // 1 — yellow-100
+                    '#FEF08A', // 2 — yellow-200
+                    '#FDE047', // 3 — yellow-300
+                    '#FACC15', // 4 — yellow-400
+                    '#EAB308', // 5 — yellow-500
                     '#BEF264', // 6 — lime-300
                     '#A3E635', // 7 — lime-400
                     '#22C55E', // 8 — green-500
@@ -1021,16 +1028,20 @@ const MapboxVisualization = ({
                   filter={['==', ['get', 'is_unassigned'], false]}
                   paint={{
                     'line-color': ['get', 'rep_color'],
-                    'line-width': 3,
-                    'line-opacity': 0.8
+                    'line-width': ['interpolate', ['linear'], ['zoom'], 3, 3.5, 6, 5, 10, 6.5],
+                    'line-opacity': 0.95,
                   }}
                 />
               </Source>
             )}
 
-            {/* State / Province borders */}
+            {/* State / Province borders — dimmed when territories overlay is active so the colored rep borders read clearly */}
             <Source id="state-borders" type="geojson" data="https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json">
-              <Layer id="state-lines" type="line" paint={{ 'line-color': '#1C1917', 'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1.4, 6, 2.2, 10, 3], 'line-opacity': 0.7 }} />
+              <Layer id="state-lines" type="line" paint={{
+                'line-color': '#1C1917',
+                'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1.4, 6, 2.2, 10, 3],
+                'line-opacity': territoriesEnabled ? 0.25 : 0.7,
+              }} />
             </Source>
             <Source id="canada-borders" type="geojson" data="https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/canada.geojson">
               <Layer id="canada-lines" type="line" paint={{ 'line-color': '#1C1917', 'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1.4, 6, 2.2, 10, 3], 'line-opacity': 0.7 }} />
@@ -1044,9 +1055,9 @@ const MapboxVisualization = ({
               </Source>
             )}
 
-            {/* Individual location points with clustering — clustering disabled when a state filter is active so individual pins show through */}
+            {/* Individual location points — clustering disabled globally so all pins stay visible */}
             {locationGeoJSON && (
-              <Source id="location-source" type="geojson" data={locationGeoJSON} cluster={!selectedStates || selectedStates.length === 0} clusterMaxZoom={11} clusterRadius={18}>
+              <Source id="location-source" type="geojson" data={locationGeoJSON} cluster={false}>
                 <Layer id="location-clusters" type="circle" filter={['has', 'point_count']} paint={{
                   'circle-color': ['step', ['get', 'point_count'], '#57534E', 20, '#44403C', 100, '#292524', 500, '#1C1917'],
                   'circle-radius': ['step', ['get', 'point_count'], 11, 20, 14, 100, 18, 500, 22],
@@ -1066,9 +1077,9 @@ const MapboxVisualization = ({
               </Source>
             )}
 
-            {/* Aggregated city markers (CLS Customers) — clustering off under state filter */}
+            {/* Aggregated city markers (CLS Customers) — clustering off globally */}
             {cityMarkersGeoJSON && (
-              <Source id="city-markers-source" type="geojson" data={cityMarkersGeoJSON} cluster={!selectedStates || selectedStates.length === 0} clusterMaxZoom={12} clusterRadius={50}>
+              <Source id="city-markers-source" type="geojson" data={cityMarkersGeoJSON} cluster={false}>
                 <Layer id="clusters" type="circle" filter={['has', 'point_count']} paint={{
                   'circle-color': ['step', ['get', 'point_count'], '#0369A1', 10, '#075985', 50, '#0C4A6E'],
                   'circle-radius': ['step', ['get', 'point_count'], 16, 10, 22, 50, 28],

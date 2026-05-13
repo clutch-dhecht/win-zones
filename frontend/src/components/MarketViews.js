@@ -31,6 +31,10 @@ const MARKET_PRESETS = {
     ],
     gateByDensityLayers: ['1000+ Wheat Growers', 'Wheat Acres'],
     gateMode: 'any',
+    // Auto-spotlight all reps except Darren — wheat-belt territory only
+    enableTerritories: true,
+    defaultReps: ['laramie', 'sid', 'miya', 'matthew', 'tyler', 'natalie'],
+    defaultRepIds: ['laramie', 'sid', 'miya', 'matthew', 'tyler', 'natalie'],
   },
   rice_abm: {
     label: 'Rice ABM',
@@ -44,6 +48,8 @@ const MARKET_PRESETS = {
     gateMode: 'any',
     enableTerritories: true,
     defaultReps: ['darren'],
+    // Auto-spotlight Darren's territory (AR, LA, MS, TN, KY)
+    defaultRepIds: ['darren'],
   },
   wheat: {
     label: 'Wheat',
