@@ -26,6 +26,8 @@ const LayerStats = ({
   onLayerHideOthers,
   onLayerResetMarket,
   presetLayers = null, // ordered list of layers in the active market preset; null = no preset
+  coverageCounts = null, // { 'Wheat Acres': 23000000, ... } — covered numerator when toggle is on
+  coverageTotals = null, // { 'Wheat Acres': 33094712, ... } — canonical-basis denominator (subset of full TAM that has matching geometry)
 }) => {
   const [menu, setMenu] = useState(null);
 
@@ -92,17 +94,31 @@ const LayerStats = ({
           cards.push({ key: grp.label, displayLayer: grp.label, value: total, active });
         }
       } else {
-        const value = counts[layer] || 0;
-        if (value > 0 || presetLayers) {
-          // `key` is the underlying layer identifier (used by toggle handlers);
-          // `displayLayer` is the user-facing label shown on the card.
-          cards.push({ key: layer, displayLayer: labelFor(layer), value, active: !!activeLayers[layer] });
+        const fullValue = counts[layer] || 0;
+        const hasCoverage = coverageCounts && Object.prototype.hasOwnProperty.call(coverageCounts, layer);
+        const displayValue = hasCoverage ? coverageCounts[layer] : fullValue;
+        // When coverage is on, the "of Y" subtitle uses the canonical-basis
+        // denominator (counties with matching geometry) so the ratio is valid.
+        // Falls back to fullValue if coverageTotals doesn't have this layer.
+        const tamTotal = hasCoverage
+          ? (coverageTotals && Object.prototype.hasOwnProperty.call(coverageTotals, layer)
+              ? coverageTotals[layer]
+              : fullValue)
+          : null;
+        if (displayValue > 0 || fullValue > 0 || presetLayers) {
+          cards.push({
+            key: layer,
+            displayLayer: labelFor(layer),
+            value: displayValue,
+            tamTotal,
+            active: !!activeLayers[layer],
+          });
         }
       }
     });
 
     return cards;
-  }, [activeLayers, pointData, locationData, densityData, presetLayers]);
+  }, [activeLayers, pointData, locationData, densityData, presetLayers, coverageCounts, coverageTotals]);
 
   if (stats.length === 0) return null;
   const cols = stats.length <= 2 ? 'grid-cols-2' : 'grid-cols-3';
@@ -110,7 +126,7 @@ const LayerStats = ({
   return (
     <>
       <div className={`grid ${cols} gap-1.5`} data-testid="layer-stats">
-        {stats.map(({ key, displayLayer, value, active }) => {
+        {stats.map(({ key, displayLayer, value, active, tamTotal }) => {
           const clickable = typeof onLayerToggle === 'function';
           return (
             <button
@@ -139,6 +155,11 @@ const LayerStats = ({
               >
                 {formatStat(value)}
               </div>
+              {tamTotal != null && tamTotal !== value && (
+                <div className="text-[9px] leading-tight text-stone-400">
+                  of {formatStat(tamTotal)}
+                </div>
+              )}
               <div className={`text-[9px] mt-0.5 leading-tight font-medium ${active ? 'text-stone-600' : 'text-stone-400'}`}>
                 {displayLayer}
               </div>

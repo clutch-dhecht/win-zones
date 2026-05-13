@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import axios from 'axios';
+import { circle } from '@turf/circle';
+import { union as turfUnion } from '@turf/union';
+import { intersect as turfIntersect } from '@turf/intersect';
+import { area as turfArea } from '@turf/area';
+import precomputedCoverage from '../data/precomputed-coverage.json';
 import FileUpload from './FileUpload';
 import MapboxVisualization from './MapboxVisualization';
 import LayerControls from './LayerControls';
@@ -27,6 +32,8 @@ const MapDashboard = ({ apiUrl }) => {
   const [winZonesMode, setWinZonesMode] = useState(null);
   const [winZoneSpotlight, setWinZoneSpotlight] = useState(false);
   const [selectedMarketKey, setSelectedMarketKey] = useState(null);
+  const [coverageRadiusEnabled, setCoverageRadiusEnabled] = useState(false);
+  const [coverageRadiusMiles, setCoverageRadiusMiles] = useState(75);
   const [winZoneRankings, setWinZoneRankings] = useState([]);
   const [enrichedFeatures, setEnrichedFeatures] = useState([]);
   const [winZones, setWinZones] = useState([]);
@@ -95,6 +102,13 @@ const MapDashboard = ({ apiUrl }) => {
           setSelectedRepIds(null);
           setSelectedStates(null);
         }
+        // Auto-apply coverage radius toggle for ABM-style presets
+        if (preset.defaultCoverageRadius) {
+          setCoverageRadiusEnabled(true);
+          setCoverageRadiusMiles(preset.defaultCoverageRadius);
+        } else {
+          setCoverageRadiusEnabled(false);
+        }
       }
       setSelectedMarketKey(marketKey);
     } else {
@@ -102,6 +116,7 @@ const MapDashboard = ({ apiUrl }) => {
       setSelectedMarketKey(null);
       setSelectedRepIds(null);
       setSelectedStates(null);
+      setCoverageRadiusEnabled(false);
     }
     setActiveLayers(newActive);
   };
@@ -256,6 +271,10 @@ const MapDashboard = ({ apiUrl }) => {
           defaultPreset.defaultRepIds.forEach(id => getRepStates(id).forEach(s => stateUnion.add(s)));
           setSelectedStates(stateUnion.size > 0 ? Array.from(stateUnion) : null);
         }
+        if (defaultPreset && defaultPreset.defaultCoverageRadius) {
+          setCoverageRadiusEnabled(true);
+          setCoverageRadiusMiles(defaultPreset.defaultCoverageRadius);
+        }
       } catch (e) { console.error(e); }
     };
     loadExistingData();
@@ -397,6 +416,453 @@ const MapDashboard = ({ apiUrl }) => {
     return out;
   }, [winZoneSpotlightKeys, repSpotlightKeys]);
 
+  // ─── COVERAGE RADIUS: exact polygon-intersection math ─────────────────────
+  // The canonical county basis: each county appears once, keyed by normalized
+  // (state, county). Density values are SUMMED across duplicate density_data
+  // rows (matches LayerStats behavior). A county is included ONLY IF we also
+  // have its geometry from countiesGeoJSON — counties missing geometry are
+  // excluded from BOTH the coverage numerator AND the canonical-basis TAM.
+  const canonicalCountyBasis = useMemo(() => {
+    if (!countiesGeoJSON || !filteredDensityData || filteredDensityData.length === 0) return null;
+
+    // Apply rep + win-zone spotlight here too, so the KPI denominator matches
+    // exactly what's visually rendered on the map. Without this, the denominator
+    // counts counties OUTSIDE the rep's territory and the numerator counts pin
+    // coverage from outside-territory pins — both invisible to the user.
+    const COUNTY_RENAMES_LOCAL = { 'OGLALALAKOTA': 'SHANNON' };
+    const normalizeCountyName = (name) => {
+      let n = String(name || '').toUpperCase().trim();
+      n = n.replace(/ CITY$/, '');
+      n = n.replace(/^SAINT /, 'ST ').replace(/^SAINTE /, 'STE ');
+      n = n.replace(/^ST\. /, 'ST ').replace(/^STE\. /, 'STE ');
+      n = n.replace(/\./g, '').replace(/'/g, '').replace(/Ñ/g, 'N').replace(/ñ/g, 'N');
+      n = n.replace(/^DE /, 'DE').replace(/^LA /, 'LA').replace(/^LE /, 'LE');
+      n = n.replace(/-/g, ' ');
+      n = n.replace(/\s+/g, '');
+      if (COUNTY_RENAMES_LOCAL[n]) n = COUNTY_RENAMES_LOCAL[n];
+      return n;
+    };
+    const normalizeState = (s) => String(s || '').toUpperCase().trim().replace(/\s+/g, ' ');
+
+    const FIPS_TO_STATE_LOCAL = {
+      "01":"Alabama","02":"Alaska","04":"Arizona","05":"Arkansas","06":"California","08":"Colorado","09":"Connecticut","10":"Delaware",
+      "11":"District of Columbia","12":"Florida","13":"Georgia","15":"Hawaii","16":"Idaho","17":"Illinois","18":"Indiana","19":"Iowa",
+      "20":"Kansas","21":"Kentucky","22":"Louisiana","23":"Maine","24":"Maryland","25":"Massachusetts","26":"Michigan","27":"Minnesota",
+      "28":"Mississippi","29":"Missouri","30":"Montana","31":"Nebraska","32":"Nevada","33":"New Hampshire","34":"New Jersey","35":"New Mexico",
+      "36":"New York","37":"North Carolina","38":"North Dakota","39":"Ohio","40":"Oklahoma","41":"Oregon","42":"Pennsylvania","44":"Rhode Island",
+      "45":"South Carolina","46":"South Dakota","47":"Tennessee","48":"Texas","49":"Utah","50":"Vermont","51":"Virginia","53":"Washington",
+      "54":"West Virginia","55":"Wisconsin","56":"Wyoming",
+    };
+
+    // 1. Aggregate density rows by canonical key (sum across case duplicates)
+    const aggregated = new Map(); // key -> { layers: {...}, dupeCount }
+    let duplicateCount = 0;
+    filteredDensityData.forEach(d => {
+      const key = `${normalizeState(d.state)}|${normalizeCountyName(d.county)}`;
+      const existing = aggregated.get(key);
+      if (existing) {
+        duplicateCount++;
+        Object.entries(d.layers || {}).forEach(([k, v]) => {
+          if (typeof v === 'number') existing.layers[k] = (existing.layers[k] || 0) + v;
+        });
+      } else {
+        const layers = {};
+        Object.entries(d.layers || {}).forEach(([k, v]) => {
+          if (typeof v === 'number') layers[k] = v;
+        });
+        aggregated.set(key, { state: d.state, county: d.county, layers });
+      }
+    });
+
+    // 2. Build geometry index from the counties GeoJSON
+    const geomLookup = new Map();
+    countiesGeoJSON.features.forEach(feat => {
+      const stateName = FIPS_TO_STATE_LOCAL[feat.properties.STATE];
+      if (!stateName) return;
+      const key = `${normalizeState(stateName)}|${normalizeCountyName(feat.properties.NAME)}`;
+      geomLookup.set(key, feat);
+    });
+
+    // 3. Build canonical entries — only counties that have BOTH density + geometry
+    //    AND fall inside the active spotlight (rep + win zone) when one is set.
+    const counties = [];
+    let missingGeometry = 0;
+    let outsideSpotlight = 0;
+    aggregated.forEach((entry, key) => {
+      const feat = geomLookup.get(key);
+      if (!feat) {
+        missingGeometry++;
+        return;
+      }
+      if (spotlightCountyKeys && !spotlightCountyKeys.has(key)) {
+        outsideSpotlight++;
+        return;
+      }
+      counties.push({ key, state: entry.state, county: entry.county, layers: entry.layers, feature: feat });
+    });
+
+    return { counties, missingGeometry, duplicateCount, outsideSpotlight };
+  }, [countiesGeoJSON, filteredDensityData, spotlightCountyKeys]);
+
+  // Visible pins (state-filtered + active layers). The expensive spotlight PIP
+  // gate is deferred to computeCoverageMetrics so it never blocks the render.
+  const visibleCoveragePins = useMemo(() => {
+    if (!coverageRadiusEnabled) return null;
+    const pins = [];
+    (filteredLocationData || []).forEach(loc => {
+      if (!activeLayers[loc.layer]) return;
+      if (typeof loc.lat !== 'number' || typeof loc.lon !== 'number') return;
+      pins.push([loc.lon, loc.lat]);
+    });
+    return pins;
+  }, [coverageRadiusEnabled, filteredLocationData, activeLayers]);
+
+  // Coverage math: union of 75-mi circles, then exact intersect with every
+  // canonical county polygon. Returns BOTH the canonical-basis denominator
+  // and the covered numerators per density layer.
+  //
+  // Deferred via setTimeout so the page renders BEFORE the heavy compute
+  // (union of thousands of circles + thousands of polygon intersects can
+  // take multiple seconds on the main thread).
+  const [coverageMetrics, setCoverageMetrics] = useState(null);
+  const [coverageComputing, setCoverageComputing] = useState(false);
+
+  useEffect(() => {
+    if (!coverageRadiusEnabled
+        || !canonicalCountyBasis || canonicalCountyBasis.counties.length === 0
+        || !visibleCoveragePins || visibleCoveragePins.length === 0) {
+      setCoverageMetrics(null);
+      setCoverageComputing(false);
+      return;
+    }
+
+    // Cache key: stable across reloads as long as the inputs that affect the
+    // coverage math haven't changed. Includes pin count + canonical TAM so
+    // any data change (new pins seeded, density data refreshed) invalidates.
+    const tamGrowers = canonicalCountyBasis.counties.reduce(
+      (s, c) => s + (c.layers['1000+ Wheat Growers'] || 0) + (c.layers['1000+ Rice Growers'] || 0)
+              + (c.layers['1000+ Corn Growers'] || 0) + (c.layers['1000+ Hogs'] || 0), 0);
+    // v3 cache key: threshold gate (0.5) was added, so v2-keyed entries are stale.
+    const cacheKey = `coverageMetrics:v3:${selectedMarketKey || 'custom'}:${coverageRadiusMiles}:${visibleCoveragePins.length}:${tamGrowers}:${canonicalCountyBasis.counties.length}`;
+
+    // PRECOMPUTED HIT — instant on first paint for ABM markets at their default
+    // radius. Falls back to runtime compute if the inputs don't exactly match
+    // (e.g., user changed filters, data drifted from precompute snapshot).
+    // Precomputed JSON hit — only safe to use if it was generated under the
+    // same math version as runtime. v3 introduces the 0.5 area threshold, so
+    // any precomputed entry without `mathVersion: 'v3'` is stale and skipped.
+    try {
+      const precomp = (precomputedCoverage.entries || []).find(e =>
+        e.market === selectedMarketKey
+        && e.radius === coverageRadiusMiles
+        && e.visiblePinsCount === visibleCoveragePins.length
+        && e.canonicalCountiesCount === canonicalCountyBasis.counties.length
+        && e.mathVersion === 'v3'
+      );
+      if (precomp && precomp.covered && precomp.canonicalTotals) {
+        setCoverageMetrics({ covered: precomp.covered, canonicalTotals: precomp.canonicalTotals });
+        setCoverageComputing(false);
+        // eslint-disable-next-line no-console
+        console.log('coverage[' + selectedMarketKey + ' @ ' + coverageRadiusMiles + 'mi] (precomputed)');
+        return;
+      }
+    } catch (e) { /* fall through */ }
+
+    // localStorage cache hit → render instantly, no async deferral
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.covered && parsed.canonicalTotals) {
+          setCoverageMetrics(parsed);
+          setCoverageComputing(false);
+          return;
+        }
+      }
+    } catch (e) { /* fall through to compute */ }
+
+    setCoverageComputing(true);
+    setCoverageMetrics(null); // clear stale so the KPI cards return to TAM while computing
+    let cancelled = false;
+    const tid = setTimeout(() => {
+      if (cancelled) return;
+      const result = computeCoverageMetrics({
+        canonicalCountyBasis,
+        visibleCoveragePins,
+        coverageRadiusMiles,
+        selectedMarketKey,
+      });
+      if (!cancelled) {
+        setCoverageMetrics(result);
+        setCoverageComputing(false);
+        if (result) {
+          try { localStorage.setItem(cacheKey, JSON.stringify(result)); }
+          catch (e) { /* localStorage full or denied — silently skip */ }
+        }
+      }
+    }, 50);
+    return () => { cancelled = true; clearTimeout(tid); };
+  }, [coverageRadiusEnabled, coverageRadiusMiles, canonicalCountyBasis, visibleCoveragePins, selectedMarketKey]);
+
+  const computeCoverageMetrics = ({ canonicalCountyBasis, visibleCoveragePins, coverageRadiusMiles, selectedMarketKey }) => {
+    const t0 = performance.now();
+    const DENSITY_LAYERS = [
+      '1000+ Wheat Growers', '1000+ Corn Growers', '1000+ Rice Growers', '1000+ Hogs',
+      'Wheat Acres', 'Corn Acres', 'Rice Acres', 'Farms with Grain Storage',
+    ];
+
+    // Conservative coverage threshold: a county must have at least this fraction
+    // of its area inside the radius union to credit ANY growers. Counties below
+    // the threshold are dropped (credit 0); counties at/above get ratio × growers.
+    // Tune here — 0.5 ("majority of county reachable") is the default conservative bar.
+    const COVERAGE_THRESHOLD = 0.5;
+
+    // ── Canonical TAM denominators
+    const canonicalTotals = {};
+    DENSITY_LAYERS.forEach(l => { canonicalTotals[l] = 0; });
+    let countiesWithGrowers = 0;
+    let countiesWithAcres = 0;
+    canonicalCountyBasis.counties.forEach(c => {
+      DENSITY_LAYERS.forEach(l => {
+        const v = c.layers[l];
+        if (typeof v === 'number') canonicalTotals[l] += v;
+      });
+      if ((c.layers['1000+ Wheat Growers'] || 0) > 0) countiesWithGrowers++;
+      if ((c.layers['Wheat Acres'] || 0) > 0) countiesWithAcres++;
+    });
+
+    const milesBetween = (lon1, lat1, lon2, lat2) => {
+      const R = 3958.8;
+      const toRad = Math.PI / 180;
+      const dLat = (lat2 - lat1) * toRad;
+      const dLon = (lon2 - lon1) * toRad;
+      const a = Math.sin(dLat / 2) ** 2
+              + Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.sin(dLon / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    // Pre-compute county bbox + center radius + polys for spatial pruning + PIP
+    const countyMeta = canonicalCountyBasis.counties.map(c => {
+      const geom = c.feature.geometry;
+      const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const poly of polys) {
+        for (const co of poly[0]) {
+          if (co[0] < minX) minX = co[0];
+          if (co[0] > maxX) maxX = co[0];
+          if (co[1] < minY) minY = co[1];
+          if (co[1] > maxY) maxY = co[1];
+        }
+      }
+      const cLon = (minX + maxX) / 2;
+      const cLat = (minY + maxY) / 2;
+      const cornerMiles = milesBetween(cLon, cLat, maxX, maxY);
+      return { c, polys, bbox: [minX, minY, maxX, maxY], center: [cLon, cLat], cornerMiles };
+    });
+
+    // ── Spotlight pin filter — pins must lie INSIDE a canonical-basis county
+    // (already spotlight-gated) to contribute coverage. SKIPPED when no
+    // spotlight is active (canonicalCountyBasis.outsideSpotlight === 0): every
+    // state-filtered pin is already in-scope, so the filter would just no-op
+    // for ~70ms. Big initial-load win.
+    const tPinFilter0 = performance.now();
+    let filteredPins;
+    let pinsExcludedBySpotlight = 0;
+    const spotlightActive = (canonicalCountyBasis.outsideSpotlight || 0) > 0;
+    if (!spotlightActive) {
+      filteredPins = visibleCoveragePins;
+    } else {
+      const pointInRing = (lon, lat, ring) => {
+        let inside = false;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+          const xi = ring[i][0], yi = ring[i][1];
+          const xj = ring[j][0], yj = ring[j][1];
+          const intersect = ((yi > lat) !== (yj > lat)) &&
+            (lon < ((xj - xi) * (lat - yi)) / (yj - yi + 1e-12) + xi);
+          if (intersect) inside = !inside;
+        }
+        return inside;
+      };
+      filteredPins = [];
+      for (const p of visibleCoveragePins) {
+        let hit = false;
+        for (const meta of countyMeta) {
+          const b = meta.bbox;
+          if (p[0] < b[0] || p[0] > b[2] || p[1] < b[1] || p[1] > b[3]) continue;
+          for (const poly of meta.polys) {
+            if (pointInRing(p[0], p[1], poly[0])) { hit = true; break; }
+          }
+          if (hit) break;
+        }
+        if (hit) filteredPins.push(p);
+      }
+      pinsExcludedBySpotlight = visibleCoveragePins.length - filteredPins.length;
+    }
+    const pinFilterMs = performance.now() - tPinFilter0;
+
+    // ── Build a grid-based spatial index of the SPOTLIGHT-FILTERED pins.
+    const milesPerDegLat = 69;
+    const cellDeg = Math.max(1, Math.ceil((coverageRadiusMiles + 30) / milesPerDegLat));
+    const pinCells = new Map();
+    filteredPins.forEach((p, idx) => {
+      const cx = Math.floor(p[0] / cellDeg);
+      const cy = Math.floor(p[1] / cellDeg);
+      const k = `${cx},${cy}`;
+      const bucket = pinCells.get(k);
+      if (bucket) bucket.push(idx);
+      else pinCells.set(k, [idx]);
+    });
+
+    // ── For each county: union ONLY nearby pin circles, then intersect.
+    const covered = {};
+    DENSITY_LAYERS.forEach(l => { covered[l] = 0; });
+    let withRatioGt0 = 0;
+    let withRatioEq1 = 0;
+    let maxRatio = 0;
+    let minRatioPositive = 1;
+    let intersectErrors = 0;
+    let countiesSkippedNoPins = 0;
+    let countiesCredited = 0;
+    let countiesDroppedByThreshold = 0;
+    let unionMsTotal = 0;
+    let intersectMsTotal = 0;
+
+    for (const meta of countyMeta) {
+      const { c, center, cornerMiles } = meta;
+      // Threshold = how far from county center a pin can be and STILL have its
+      // radius reach the county. Add a small slack to be safe.
+      const maxPinDist = cornerMiles + coverageRadiusMiles + 1;
+      // Find candidate pins via the grid
+      const cx = Math.floor(center[0] / cellDeg);
+      const cy = Math.floor(center[1] / cellDeg);
+      const cellRange = Math.ceil(maxPinDist / (milesPerDegLat * cellDeg)) + 1;
+      const nearby = [];
+      for (let dx = -cellRange; dx <= cellRange; dx++) {
+        for (let dy = -cellRange; dy <= cellRange; dy++) {
+          const bucket = pinCells.get(`${cx + dx},${cy + dy}`);
+          if (!bucket) continue;
+          for (const pi of bucket) {
+            const p = filteredPins[pi];
+            if (milesBetween(center[0], center[1], p[0], p[1]) <= maxPinDist) {
+              nearby.push(p);
+            }
+          }
+        }
+      }
+      if (nearby.length === 0) {
+        countiesSkippedNoPins++;
+        continue;
+      }
+
+      // Build only the nearby circles (small N per county, low memory)
+      let smallUnion = null;
+      const tU0 = performance.now();
+      try {
+        if (nearby.length === 1) {
+          smallUnion = circle(nearby[0], coverageRadiusMiles, { steps: 32, units: 'miles' });
+        } else {
+          const circles = nearby.map(p => circle(p, coverageRadiusMiles, { steps: 32, units: 'miles' }));
+          smallUnion = turfUnion({ type: 'FeatureCollection', features: circles });
+        }
+      } catch (e) {
+        intersectErrors++;
+        unionMsTotal += performance.now() - tU0;
+        continue;
+      }
+      unionMsTotal += performance.now() - tU0;
+      if (!smallUnion) continue;
+
+      const tI0 = performance.now();
+      let ratio = 0;
+      try {
+        const inter = turfIntersect({ type: 'FeatureCollection', features: [c.feature, smallUnion] });
+        if (inter) {
+          const countyArea = turfArea(c.feature);
+          if (countyArea > 0) ratio = turfArea(inter) / countyArea;
+        }
+      } catch (e) {
+        intersectErrors++;
+      }
+      intersectMsTotal += performance.now() - tI0;
+      if (!Number.isFinite(ratio) || ratio < 0) ratio = 0;
+      if (ratio > 1) ratio = 1;
+      if (ratio > 0) {
+        withRatioGt0++;
+        if (ratio < minRatioPositive) minRatioPositive = ratio;
+        if (ratio > maxRatio) maxRatio = ratio;
+        if (ratio >= 0.999) withRatioEq1++;
+      }
+      // Conservative gate: counties below the threshold credit zero. Above the
+      // threshold, credit ratio × growers (so partial big counties still scale).
+      if (ratio >= COVERAGE_THRESHOLD) {
+        countiesCredited++;
+        DENSITY_LAYERS.forEach(l => {
+          const v = c.layers[l];
+          if (typeof v === 'number' && v > 0) covered[l] += v * ratio;
+        });
+      } else if (ratio > 0) {
+        countiesDroppedByThreshold++;
+      }
+    }
+    const tIntersect = performance.now();
+    const tUnion = t0 + unionMsTotal; // for log compatibility
+
+    // ── Hard clamps + rounding
+    const display = {};
+    let clampTriggered = false;
+    DENSITY_LAYERS.forEach(l => {
+      let val = covered[l];
+      if (val > canonicalTotals[l]) {
+        console.error(`[coverage] numerator > denominator for ${l}: ${val} > ${canonicalTotals[l]} — clamping`);
+        clampTriggered = true;
+        val = canonicalTotals[l];
+      }
+      if (val < 0) val = 0;
+      display[l] = Math.round(val);
+    });
+    const displayTotals = {};
+    DENSITY_LAYERS.forEach(l => { displayTotals[l] = Math.round(canonicalTotals[l]); });
+
+    // ── Diagnostic log (one line, dense)
+    // eslint-disable-next-line no-console
+    console.log('coverage[' + (selectedMarketKey || 'custom') + ' @ ' + coverageRadiusMiles + 'mi]', {
+      'canonical counties (after spotlight)': canonicalCountyBasis.counties.length,
+      'duplicate density rows agg\'d': canonicalCountyBasis.duplicateCount,
+      'counties missing geometry': canonicalCountyBasis.missingGeometry,
+      'counties excluded by spotlight': canonicalCountyBasis.outsideSpotlight || 0,
+      'counties w/ growers > 0': countiesWithGrowers,
+      'counties w/ acres > 0': countiesWithAcres,
+      'TAM growers (canonical)': displayTotals['1000+ Wheat Growers'],
+      'TAM acres (canonical)': displayTotals['Wheat Acres'],
+      'visible pins (input)': visibleCoveragePins.length,
+      'pins in spotlight (used)': filteredPins.length,
+      'pins excluded by spotlight': pinsExcludedBySpotlight,
+      'pin filter ms': Math.round(pinFilterMs),
+      'union ms (per-county total)': Math.round(unionMsTotal),
+      'intersect ms (per-county total)': Math.round(intersectMsTotal),
+      'wall-clock ms': Math.round(tIntersect - t0),
+      'counties skipped (no nearby pins)': countiesSkippedNoPins,
+      'counties ratio > 0 (touched)': withRatioGt0,
+      'counties credited (>= threshold)': countiesCredited,
+      'counties dropped by threshold': countiesDroppedByThreshold,
+      'coverage threshold': COVERAGE_THRESHOLD,
+      'counties ratio == 1': withRatioEq1,
+      'max ratio': Number(maxRatio.toFixed(4)),
+      'min ratio (positive)': Number(minRatioPositive.toFixed(4)),
+      'intersect errors': intersectErrors,
+      'covered growers (raw)': Math.round(covered['1000+ Wheat Growers'] * 100) / 100,
+      'covered acres (raw)': Math.round(covered['Wheat Acres']),
+      'clamp triggered': clampTriggered,
+      'display growers': display['1000+ Wheat Growers'],
+      'display acres': display['Wheat Acres'],
+    });
+
+    return { covered: display, canonicalTotals: displayTotals };
+  };
+
+  const coverageCounts = coverageMetrics ? coverageMetrics.covered : null;
+  const coverageTotals = coverageMetrics ? coverageMetrics.canonicalTotals : null;
+
   const sidebarContent = (
     <>
       {/* Market Views */}
@@ -438,6 +904,8 @@ const MapDashboard = ({ apiUrl }) => {
             locationData={filteredLocationData}
             densityData={filteredDensityData}
             presetLayers={activeMarket && activeMarket !== 'custom' ? (getMarketPreset(activeMarket)?.layers || null) : null}
+            coverageCounts={coverageCounts}
+            coverageTotals={coverageTotals}
             onLayerToggle={(layerName) => {
               setActiveLayers(prev => {
                 const next = { ...prev };
@@ -469,6 +937,43 @@ const MapDashboard = ({ apiUrl }) => {
               }
             }}
           />
+        </div>
+      )}
+
+      {/* Coverage Radius */}
+      {hasData && (locationData.length > 0) && (
+        <div className="px-4 py-3 border-b border-stone-100">
+          <div className="flex items-center gap-2">
+            <div className="w-3.5 h-3.5 rounded-full flex-shrink-0 bg-sky-500/30 border-2 border-sky-500" />
+            <span className={`text-sm flex-1 font-medium ${coverageRadiusEnabled ? 'text-sky-700' : 'text-stone-400'}`}>Coverage Radius</span>
+            <div onClick={(e) => e.stopPropagation()}>
+              <Switch checked={coverageRadiusEnabled} onCheckedChange={setCoverageRadiusEnabled} className="scale-75" data-testid="coverage-radius-toggle" />
+            </div>
+          </div>
+          {coverageRadiusEnabled && (
+            <div className="ml-5 mt-1.5 flex items-center gap-1">
+              <span className="text-[10px] text-stone-400 mr-1">Radius:</span>
+              {[25, 50, 75, 100].map(mi => (
+                <button
+                  key={mi}
+                  onClick={() => setCoverageRadiusMiles(mi)}
+                  className={`text-[10px] px-2 py-1 rounded transition-colors ${
+                    coverageRadiusMiles === mi ? 'bg-sky-600 text-white' : 'bg-stone-100 text-stone-500 hover:bg-stone-200'
+                  }`}
+                  data-testid={`coverage-radius-${mi}`}
+                >
+                  {mi} mi
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="text-[10px] text-stone-400 mt-1.5 ml-5">
+            {coverageComputing
+              ? `Computing ${coverageRadiusMiles}-mile coverage…`
+              : coverageRadiusEnabled
+                ? `${coverageRadiusMiles}-mile drive area around every visible pin`
+                : 'Net growers / acres reachable from your locations'}
+          </div>
         </div>
       )}
 
@@ -784,6 +1289,7 @@ const MapDashboard = ({ apiUrl }) => {
             gateByDensityLayers={activeMarket && activeMarket !== 'custom' ? (getMarketPreset(activeMarket)?.gateByDensityLayers || null) : null}
             spotlightCountyKeys={spotlightCountyKeys}
             onCountiesLoaded={setCountiesGeoJSON}
+            coverageRadiusMiles={coverageRadiusEnabled ? coverageRadiusMiles : 0}
             gateMode={activeMarket && activeMarket !== 'custom' ? (getMarketPreset(activeMarket)?.gateMode || 'any') : 'any'}
           />
         </div>
