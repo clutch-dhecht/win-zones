@@ -10,26 +10,29 @@ const formatStat = (value) => {
   return value.toLocaleString();
 };
 
-const LayerStats = ({ activeLayers, pointData, locationData, densityData, onLayerToggle, onLayerHideOthers, onLayerResetMarket }) => {
-  const [menu, setMenu] = useState(null);  // { layer, x, y } | null
+const LayerStats = ({
+  activeLayers,
+  pointData,
+  locationData,
+  densityData,
+  onLayerToggle,
+  onLayerHideOthers,
+  onLayerResetMarket,
+  presetLayers = null, // ordered list of layers in the active market preset; null = no preset
+}) => {
+  const [menu, setMenu] = useState(null);
 
-  // Close menu on any outside click / Escape
   useEffect(() => {
     if (!menu) return;
     const close = () => setMenu(null);
     const onKey = (e) => { if (e.key === 'Escape') setMenu(null); };
     document.addEventListener('click', close);
     document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('click', close);
-      document.removeEventListener('keydown', onKey);
-    };
+    return () => { document.removeEventListener('click', close); document.removeEventListener('keydown', onKey); };
   }, [menu]);
 
   const stats = useMemo(() => {
-    const result = [];
-
-    // Build a map of layer -> summary-group key (only for groups marked summary: 'group')
+    // Layer -> group summary metadata (only for groups marked summary: 'group')
     const layerToSummaryGroup = {};
     Object.entries(LAYER_GROUPS).forEach(([groupKey, group]) => {
       if (group.summary === 'group') {
@@ -37,86 +40,98 @@ const LayerStats = ({ activeLayers, pointData, locationData, densityData, onLaye
       }
     });
 
-    // Density layers: sum values across all counties
-    const densityTotals = {};
+    // Decide which layers to render cards for: union of (preset layers) + (currently active layers)
+    const cardLayerSet = new Set();
+    (presetLayers || []).forEach(l => cardLayerSet.add(l));
+    Object.keys(activeLayers || {}).forEach(l => { if (activeLayers[l]) cardLayerSet.add(l); });
+
+    // Compute counts for all candidate layers, REGARDLESS of active state
+    // (so greyed cards still show the count you'd get back)
+    const counts = {};
     (densityData || []).forEach(county => {
-      Object.entries(county.layers).forEach(([layer, value]) => {
-        if (!activeLayers[layer]) return;
-        densityTotals[layer] = (densityTotals[layer] || 0) + value;
+      Object.entries(county.layers || {}).forEach(([layer, value]) => {
+        if (cardLayerSet.has(layer)) counts[layer] = (counts[layer] || 0) + value;
+      });
+    });
+    (locationData || []).forEach(loc => {
+      if (cardLayerSet.has(loc.layer)) counts[loc.layer] = (counts[loc.layer] || 0) + 1;
+    });
+    (pointData || []).forEach(city => {
+      Object.entries(city.layers || {}).forEach(([layer, value]) => {
+        if (cardLayerSet.has(layer)) counts[layer] = (counts[layer] || 0) + value;
       });
     });
 
-    Object.entries(densityTotals).forEach(([layer, total]) => {
-      if (total > 0) result.push({ layer, value: total });
+    // Walk in preset order so cards don't reorder when toggled
+    const orderedLayers = [];
+    (presetLayers || []).forEach(l => { if (!orderedLayers.includes(l)) orderedLayers.push(l); });
+    // Append any active non-preset layers (user-added via Advanced panel)
+    Object.keys(activeLayers || {}).forEach(l => {
+      if (activeLayers[l] && !orderedLayers.includes(l)) orderedLayers.push(l);
     });
 
-    // Individual location points: count per layer
-    // For summary-groups: roll sub-layers into a single card keyed by group label
-    const locationCounts = {};
-    const groupedCounts = {};
-    (locationData || []).forEach(loc => {
-      if (!activeLayers[loc.layer]) return;
-      const grp = layerToSummaryGroup[loc.layer];
+    // Build the cards, collapsing group sub-layers into their summary card
+    const seen = new Set();
+    const cards = [];
+    orderedLayers.forEach(layer => {
+      const grp = layerToSummaryGroup[layer];
       if (grp) {
-        groupedCounts[grp.label] = (groupedCounts[grp.label] || 0) + 1;
+        if (seen.has(grp.label)) return;
+        seen.add(grp.label);
+        const subs = LAYER_GROUPS[grp.groupKey].layers || [];
+        const total = subs.reduce((s, sl) => s + (counts[sl] || 0), 0);
+        const active = subs.some(sl => activeLayers[sl]);
+        if (total > 0 || presetLayers) {
+          cards.push({ key: grp.label, displayLayer: grp.label, value: total, active });
+        }
       } else {
-        locationCounts[loc.layer] = (locationCounts[loc.layer] || 0) + 1;
+        const value = counts[layer] || 0;
+        if (value > 0 || presetLayers) {
+          cards.push({ key: layer, displayLayer: layer, value, active: !!activeLayers[layer] });
+        }
       }
     });
 
-    Object.entries(locationCounts).forEach(([layer, count]) => {
-      if (count > 0) result.push({ layer, value: count });
-    });
-    Object.entries(groupedCounts).forEach(([label, count]) => {
-      if (count > 0) result.push({ layer: label, value: count });
-    });
-
-    // Aggregated points (CLS Customers): sum values
-    const aggTotals = {};
-    (pointData || []).forEach(city => {
-      Object.entries(city.layers).forEach(([layer, value]) => {
-        if (!activeLayers[layer]) return;
-        aggTotals[layer] = (aggTotals[layer] || 0) + value;
-      });
-    });
-
-    Object.entries(aggTotals).forEach(([layer, total]) => {
-      if (total > 0) result.push({ layer, value: total });
-    });
-
-    return result;
-  }, [activeLayers, pointData, locationData, densityData]);
+    return cards;
+  }, [activeLayers, pointData, locationData, densityData, presetLayers]);
 
   if (stats.length === 0) return null;
-
   const cols = stats.length <= 2 ? 'grid-cols-2' : 'grid-cols-3';
 
   return (
     <>
       <div className={`grid ${cols} gap-1.5`} data-testid="layer-stats">
-        {stats.map(({ layer, value }) => {
+        {stats.map(({ key, displayLayer, value, active }) => {
           const clickable = typeof onLayerToggle === 'function';
           return (
             <button
-              key={layer}
+              key={key}
               type="button"
-              onClick={clickable ? () => onLayerToggle(layer) : undefined}
+              onClick={clickable ? () => onLayerToggle(displayLayer) : undefined}
               onContextMenu={clickable ? (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                setMenu({ layer, x: e.clientX, y: e.clientY });
+                setMenu({ layer: displayLayer, x: e.clientX, y: e.clientY });
               } : undefined}
-              className={`bg-stone-50 border border-stone-200 rounded-lg px-2 py-2 text-center transition-all w-full ${
-                clickable ? 'cursor-pointer hover:bg-stone-100 hover:border-stone-300 active:scale-95' : ''
-              }`}
-              data-testid={`stat-${layer}`}
-              title={clickable ? `Click to hide. Right-click for more options.` : undefined}
+              className={`border rounded-lg px-2 py-2 text-center transition-all w-full ${
+                active
+                  ? 'bg-stone-50 border-stone-200'
+                  : 'bg-stone-100/60 border-stone-200/60 opacity-60'
+              } ${clickable ? 'cursor-pointer hover:opacity-100 hover:border-stone-300 active:scale-95' : ''}`}
+              data-testid={`stat-${displayLayer}`}
+              title={clickable ? (active ? 'Click to hide. Right-click for more options.' : 'Click to show this layer. Right-click for more options.') : undefined}
             >
-              <div className="text-lg font-bold leading-tight tracking-tight" style={{ fontFamily: 'Manrope, sans-serif', color: '#D15E13' }}>
+              <div
+                className="text-lg font-bold leading-tight tracking-tight"
+                style={{
+                  fontFamily: 'Manrope, sans-serif',
+                  color: active ? '#D15E13' : '#A8A29E',
+                }}
+              >
                 {formatStat(value)}
               </div>
-              <div className="text-[9px] text-stone-600 mt-0.5 leading-tight font-medium">
-                {layer}
+              <div className={`text-[9px] mt-0.5 leading-tight font-medium ${active ? 'text-stone-600' : 'text-stone-400'}`}>
+                {displayLayer}
               </div>
             </button>
           );
@@ -130,32 +145,21 @@ const LayerStats = ({ activeLayers, pointData, locationData, densityData, onLaye
           data-testid="layer-context-menu"
         >
           <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-stone-400 border-b border-stone-100 truncate">{menu.layer}</div>
-          <button
-            type="button"
+          <button type="button"
             onClick={() => { onLayerToggle && onLayerToggle(menu.layer); setMenu(null); }}
             className="w-full text-left px-3 py-1.5 hover:bg-stone-100 text-stone-700"
             data-testid="ctx-hide-only"
-          >
-            Hide only this
-          </button>
-          <button
-            type="button"
+          >Toggle this layer</button>
+          <button type="button"
             onClick={() => { onLayerHideOthers && onLayerHideOthers(menu.layer); setMenu(null); }}
             disabled={typeof onLayerHideOthers !== 'function'}
             className="w-full text-left px-3 py-1.5 hover:bg-stone-100 text-stone-700 disabled:opacity-40 disabled:hover:bg-transparent"
-            data-testid="ctx-hide-others"
-          >
-            Hide all others
-          </button>
-          <button
-            type="button"
+          >Hide all others</button>
+          <button type="button"
             onClick={() => { onLayerResetMarket && onLayerResetMarket(); setMenu(null); }}
             disabled={typeof onLayerResetMarket !== 'function'}
             className="w-full text-left px-3 py-1.5 hover:bg-stone-100 text-stone-700 disabled:opacity-40 disabled:hover:bg-transparent border-t border-stone-100 mt-1"
-            data-testid="ctx-reset-market"
-          >
-            Reset to market default
-          </button>
+          >Reset to market default</button>
         </div>
       )}
     </>

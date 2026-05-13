@@ -25,6 +25,8 @@ const MapDashboard = ({ apiUrl }) => {
   const [radiusSettings, setRadiusSettings] = useState({});
   const [layerColors, setLayerColors] = useState({});
   const [winZonesMode, setWinZonesMode] = useState(null);
+  const [winZoneSpotlight, setWinZoneSpotlight] = useState(false);
+  const [selectedMarketKey, setSelectedMarketKey] = useState(null);
   const [winZoneRankings, setWinZoneRankings] = useState([]);
   const [enrichedFeatures, setEnrichedFeatures] = useState([]);
   const [winZones, setWinZones] = useState([]);
@@ -78,18 +80,22 @@ const MapDashboard = ({ apiUrl }) => {
             setVisibleReps(reps);
           }
         } else {
-          // Market does not auto-enable territories — clear any leakage from a prior preset
           setTerritoriesEnabled(false);
         }
       }
+      setSelectedMarketKey(marketKey);
     } else {
-      // No market or custom — turn territories off so they don't leak across views
       setTerritoriesEnabled(false);
+      setSelectedMarketKey(null);
     }
     setActiveLayers(newActive);
   };
 
-  const activeMarket = detectActiveMarket(activeLayers);
+  // The user's last-selected market sticks even after they toggle individual layers off.
+  // The derived value (detectActiveMarket) is used for the "Custom" indicator when the
+  // current layer set diverges from the selected preset.
+  const derivedMarket = detectActiveMarket(activeLayers);
+  const activeMarket = selectedMarketKey || derivedMarket;
 
   const handlePointUpload = async (file) => {
     const formData = new FormData();
@@ -217,6 +223,7 @@ const MapDashboard = ({ apiUrl }) => {
         unique.forEach(l => { newActive[l] = false; });
         if (defaultPreset) defaultPreset.layers.forEach(l => { if (unique.includes(l)) newActive[l] = true; });
         setActiveLayers(newActive);
+        setSelectedMarketKey(DEFAULT_MARKET_KEY);
         const { newRadius } = initLayerSettings(unique, newActive, {});
         setRadiusSettings(newRadius);
         // Apply territory state per the default preset's policy
@@ -274,6 +281,16 @@ const MapDashboard = ({ apiUrl }) => {
     [densityData, selectedStates, matchesStateFilter]
   );
 
+  // Win-zone spotlight county set — memoized so the Set reference is stable across
+  // renders. Without this, MapboxVisualization useMemo deps see a "new" Set every
+  // parent render and feedback-loop through onEnrichedFeatures.
+  const spotlightCountyKeys = useMemo(() => {
+    if (!winZoneSpotlight || !winZones || winZones.length === 0) return null;
+    const keys = new Set();
+    winZones.forEach(z => (z.countyIds || []).forEach(k => keys.add(String(k).toUpperCase())));
+    return keys.size > 0 ? keys : null;
+  }, [winZoneSpotlight, winZones]);
+
   const sidebarContent = (
     <>
       {/* Market Views */}
@@ -314,6 +331,7 @@ const MapDashboard = ({ apiUrl }) => {
             pointData={filteredPointData}
             locationData={filteredLocationData}
             densityData={filteredDensityData}
+            presetLayers={activeMarket && activeMarket !== 'custom' ? (getMarketPreset(activeMarket)?.layers || null) : null}
             onLayerToggle={(layerName) => {
               setActiveLayers(prev => {
                 const next = { ...prev };
@@ -369,6 +387,23 @@ const MapDashboard = ({ apiUrl }) => {
               >
                 {showZoneFocus ? 'Hide' : 'Adjust'}
               </button>
+            </div>
+          )}
+          {winZonesMode && (
+            <div className="ml-5 mt-1.5 flex items-center gap-2">
+              <label className="text-[10px] text-stone-600 flex items-center gap-1.5 cursor-pointer" htmlFor="win-zone-spotlight-toggle">
+                <Switch
+                  id="win-zone-spotlight-toggle"
+                  checked={winZoneSpotlight}
+                  onCheckedChange={setWinZoneSpotlight}
+                  className="scale-[0.65]"
+                  data-testid="win-zone-spotlight-toggle"
+                />
+                Spotlight zones
+              </label>
+              <span className="text-[9px] text-stone-400">
+                {winZoneSpotlight ? 'Map shows only zone counties' : 'Map shows everything'}
+              </span>
             </div>
           )}
           {winZonesMode && showZoneFocus && (
@@ -641,6 +676,7 @@ const MapDashboard = ({ apiUrl }) => {
             selectedStates={selectedStates}
             hasData={hasData}
             gateByDensityLayers={activeMarket && activeMarket !== 'custom' ? (getMarketPreset(activeMarket)?.gateByDensityLayers || null) : null}
+            spotlightCountyKeys={spotlightCountyKeys}
             gateMode={activeMarket && activeMarket !== 'custom' ? (getMarketPreset(activeMarket)?.gateMode || 'any') : 'any'}
           />
         </div>
