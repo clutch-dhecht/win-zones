@@ -104,6 +104,16 @@ const normalizeCountyName = (name) => {
 };
 const normalizeState = (s) => String(s || '').toUpperCase().trim().replace(/\s+/g, ' ');
 
+// Match the runtime's matchesStateFilter normalizer exactly: uppercase first
+// letter of every word, lowercase the rest. Critical: a hand-rolled
+// `replace(/\b\w/g, c => c.toUpperCase())` does NOT lowercase the rest, so
+// data rows like "NORTH DAKOTA" wouldn't title-case correctly and would slip
+// through different filters in script vs. runtime.
+const toTitleCase = (s) =>
+  String(s || '').trim().split(' ').map(w =>
+    w.length === 0 ? '' : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+  ).join(' ');
+
 const FIPS_TO_STATE = {
   "01":"Alabama","02":"Alaska","04":"Arizona","05":"Arkansas","06":"California","08":"Colorado","09":"Connecticut","10":"Delaware",
   "11":"District of Columbia","12":"Florida","13":"Georgia","15":"Hawaii","16":"Idaho","17":"Illinois","18":"Indiana","19":"Iowa",
@@ -188,13 +198,63 @@ function computeForMarket(marketKey, locationRows, densityRows, countiesGeoJSON)
   const stateUnion = new Set();
   preset.repIds.forEach(id => getRepStates(id).forEach(s => stateUnion.add(s)));
 
+  // ── Build the spotlight set EXACTLY the way MapDashboard.repSpotlightKeys
+  // does. This is what makes the precomputed cache key match the runtime —
+  // both basis counties and pins are gated by membership in this set.
+  const reps = preset.repIds.map(id => SALES_REPS.find(r => r.id === id)).filter(Boolean);
+  const fullStates = new Set();
+  const partialStateRules = {};
+  reps.forEach(rep => {
+    (rep.states || []).forEach(s => fullStates.add(s));
+    Object.entries(rep.partialStates || {}).forEach(([s, def]) => {
+      if (fullStates.has(s)) return; // full coverage trumps partial
+      if (!partialStateRules[s]) partialStateRules[s] = [];
+      partialStateRules[s].push(def);
+    });
+  });
+  const spotlightCountyKeys = new Set();
+  // IMPORTANT: this key MUST use normalizeCountyName so it matches the
+  // canonical-basis lookup (which uses normalizeState/normalizeCountyName).
+  // Earlier versions used a raw uppercase NAME which silently excluded
+  // counties with punctuation (St. Louis, O'Brien, ...) from the KPI.
+  countiesGeoJSON.features.forEach(feat => {
+    const stateName = FIPS_TO_STATE[feat.properties.STATE];
+    if (!stateName) return;
+    const countyName = feat.properties.NAME || '';
+    const key = `${normalizeState(stateName)}|${normalizeCountyName(countyName)}`;
+    if (fullStates.has(stateName)) { spotlightCountyKeys.add(key); return; }
+    const partials = partialStateRules[stateName];
+    if (!partials) return;
+    const geom = feat.geometry;
+    if (!geom) return;
+    const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
+    let sumLat = 0, count = 0;
+    for (const poly of polys) {
+      for (const c of poly[0]) {
+        sumLat += c[1];
+        count++;
+        if (count >= 50) break;
+      }
+      if (count >= 50) break;
+    }
+    const lat = count > 0 ? sumLat / count : null;
+    if (lat === null) return;
+    for (const p of partials) {
+      if ((p.rule === 'south' && lat < p.latThreshold) ||
+          (p.rule === 'north' && lat >= p.latThreshold)) {
+        spotlightCountyKeys.add(key);
+        break;
+      }
+    }
+  });
+
   // ── Filtered location points → "visible coverage pins"
   const visiblePins = [];
   locationRows.forEach(r => {
     const layer = r.layer || '';
     if (!activeLayerSet.has(layer)) return;
     const state = (r.state || '').trim();
-    const stateTitle = state.replace(/\b\w/g, c => c.toUpperCase());
+    const stateTitle = toTitleCase(state);
     if (!stateUnion.has(stateTitle)) return;
     const lat = parseFloat(r.lat), lon = parseFloat(r.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
@@ -204,7 +264,7 @@ function computeForMarket(marketKey, locationRows, densityRows, countiesGeoJSON)
   // ── Filtered density data: only counties in the state filter (matches LayerStats)
   const filteredDensity = densityRows.filter(r => {
     const state = (r.state || '').trim();
-    const stateTitle = state.replace(/\b\w/g, c => c.toUpperCase());
+    const stateTitle = toTitleCase(state);
     return stateUnion.has(stateTitle);
   });
 
@@ -229,9 +289,17 @@ function computeForMarket(marketKey, locationRows, densityRows, countiesGeoJSON)
   });
   const counties = [];
   let missingGeometry = 0;
+  let outsideSpotlight = 0;
   aggregated.forEach((entry, key) => {
     const feat = geomLookup.get(key);
     if (!feat) { missingGeometry++; return; }
+    // The spotlight set is now keyed with the SAME normalization as the
+    // aggregated key, so we can compare directly without re-deriving from
+    // feat.properties.
+    if (!spotlightCountyKeys.has(key)) {
+      outsideSpotlight++;
+      return;
+    }
     counties.push({ key, ...entry, feature: feat });
   });
 
@@ -245,11 +313,63 @@ function computeForMarket(marketKey, locationRows, densityRows, countiesGeoJSON)
     });
   });
 
-  // ── Spatial-index pins for locality
+  // ── Spotlight pin filter — mirrors MapDashboard.computeCoverageMetrics.
+  // Only runs when the spotlight excludes at least one canonical-basis
+  // county; otherwise pins state-filtered set is already in-scope and the
+  // PIP would be a no-op (~70ms saved at runtime). When it does run, a pin
+  // must lie inside SOME canonical county to contribute to coverage.
+  const spotlightActive = outsideSpotlight > 0;
+  let filteredPins;
+  let pinsExcludedBySpotlight = 0;
+  if (!spotlightActive) {
+    filteredPins = visiblePins;
+  } else {
+    // Bbox-prefilter + ray-cast PIP. Bboxes are computed inline so we don't
+    // duplicate the existing per-county bbox build below.
+    const countyBoxes = counties.map(c => {
+      const geom = c.feature.geometry;
+      const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const poly of polys) {
+        for (const co of poly[0]) {
+          if (co[0] < minX) minX = co[0]; if (co[0] > maxX) maxX = co[0];
+          if (co[1] < minY) minY = co[1]; if (co[1] > maxY) maxY = co[1];
+        }
+      }
+      return { polys, bbox: [minX, minY, maxX, maxY] };
+    });
+    const pointInRing = (lon, lat, ring) => {
+      let inside = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const xi = ring[i][0], yi = ring[i][1];
+        const xj = ring[j][0], yj = ring[j][1];
+        const intersect = ((yi > lat) !== (yj > lat)) &&
+          (lon < ((xj - xi) * (lat - yi)) / (yj - yi + 1e-12) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    };
+    filteredPins = [];
+    for (const p of visiblePins) {
+      let hit = false;
+      for (const meta of countyBoxes) {
+        const b = meta.bbox;
+        if (p[0] < b[0] || p[0] > b[2] || p[1] < b[1] || p[1] > b[3]) continue;
+        for (const poly of meta.polys) {
+          if (pointInRing(p[0], p[1], poly[0])) { hit = true; break; }
+        }
+        if (hit) break;
+      }
+      if (hit) filteredPins.push(p);
+    }
+    pinsExcludedBySpotlight = visiblePins.length - filteredPins.length;
+  }
+
+  // ── Spatial-index pins for locality (using the spotlight-filtered set)
   const milesPerDegLat = 69;
   const cellDeg = Math.max(1, Math.ceil((preset.radius + 30) / milesPerDegLat));
   const pinCells = new Map();
-  visiblePins.forEach((p, idx) => {
+  filteredPins.forEach((p, idx) => {
     const k = `${Math.floor(p[0] / cellDeg)},${Math.floor(p[1] / cellDeg)}`;
     const bucket = pinCells.get(k);
     if (bucket) bucket.push(idx);
@@ -287,7 +407,7 @@ function computeForMarket(marketKey, locationRows, densityRows, countiesGeoJSON)
         const bucket = pinCells.get(`${cx + dx},${cy + dy}`);
         if (!bucket) continue;
         for (const pi of bucket) {
-          const p = visiblePins[pi];
+          const p = filteredPins[pi];
           if (milesBetween(cLon, cLat, p[0], p[1]) <= maxPinDist) nearby.push(p);
         }
       }
@@ -346,9 +466,14 @@ function computeForMarket(marketKey, locationRows, densityRows, countiesGeoJSON)
   return {
     market: marketKey,
     radius: preset.radius,
+    // visiblePinsCount mirrors the runtime's `visibleCoveragePins.length`
+    // (INPUT to the compute, before the spotlight PIP filter). The cache key
+    // matches on this exact value.
     visiblePinsCount: visiblePins.length,
     canonicalCountiesCount: counties.length,
     missingGeometry,
+    outsideSpotlight,
+    pinsExcludedBySpotlight,
     countiesWithRatioGt0: withRatioGt0,
     countiesWithRatioEq1: withRatioEq1,
     intersectErrors,
@@ -398,7 +523,8 @@ function flattenDensityDoc(d) {
     const result = computeForMarket(marketKey, locationRows, densityRows, countiesGeoJSON);
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     console.log(`  ${marketKey} done in ${elapsed}s`);
-    console.log(`    pins: ${result.visiblePinsCount}, counties: ${result.canonicalCountiesCount}, missing geom: ${result.missingGeometry}`);
+    console.log(`    pins: ${result.visiblePinsCount}, counties (after spotlight): ${result.canonicalCountiesCount}, missing geom: ${result.missingGeometry}`);
+    console.log(`    outside-spotlight counties: ${result.outsideSpotlight}, pins excluded by spotlight: ${result.pinsExcludedBySpotlight}`);
     console.log(`    ratio>0: ${result.countiesWithRatioGt0}, ratio=1: ${result.countiesWithRatioEq1}, errors: ${result.intersectErrors}`);
     console.log(`    covered growers (wheat/rice): ${result.covered['1000+ Wheat Growers']} / ${result.covered['1000+ Rice Growers']}`);
     console.log(`    TAM growers (wheat/rice):     ${result.canonicalTotals['1000+ Wheat Growers']} / ${result.canonicalTotals['1000+ Rice Growers']}`);
