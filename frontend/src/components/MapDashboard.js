@@ -21,6 +21,28 @@ import { getLayerConfig, LAYER_GROUPS } from '../config/layerConfig';
 import { ChevronDown, ChevronRight, Settings2 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 
+// ─── Shared normalizers ───────────────────────────────────────────────────
+// Hoisted to module scope so EVERY place that builds a county-key uses the
+// same logic. Previously the spotlight set was keyed with raw uppercased
+// county names ("ST. LOUIS") while the canonical basis looked up keys with
+// the normalized form ("STLOUIS") — counties with punctuation were silently
+// excluded from KPI numerator + denominator.
+const COUNTY_RENAMES = { 'OGLALALAKOTA': 'SHANNON' };
+const normalizeCountyName = (name) => {
+  let n = String(name || '').toUpperCase().trim();
+  n = n.replace(/ CITY$/, '');
+  n = n.replace(/^SAINT /, 'ST ').replace(/^SAINTE /, 'STE ');
+  n = n.replace(/^ST\. /, 'ST ').replace(/^STE\. /, 'STE ');
+  n = n.replace(/\./g, '').replace(/'/g, '').replace(/Ñ/g, 'N').replace(/ñ/g, 'N');
+  n = n.replace(/^DE /, 'DE').replace(/^LA /, 'LA').replace(/^LE /, 'LE');
+  n = n.replace(/-/g, ' ');
+  n = n.replace(/\s+/g, '');
+  if (COUNTY_RENAMES[n]) n = COUNTY_RENAMES[n];
+  return n;
+};
+const normalizeStateUpper = (s) => String(s || '').toUpperCase().trim().replace(/\s+/g, ' ');
+const countyKey = (state, county) => `${normalizeStateUpper(state)}|${normalizeCountyName(county)}`;
+
 const MapDashboard = ({ apiUrl }) => {
   const [pointData, setPointData] = useState([]);
   const [locationData, setLocationData] = useState([]);
@@ -373,7 +395,11 @@ const MapDashboard = ({ apiUrl }) => {
       const stateName = FIPS_TO_STATE_NAME[feat.properties.STATE];
       if (!stateName) return;
       const countyName = feat.properties.NAME || '';
-      const key = `${stateName.toUpperCase()}|${countyName.toUpperCase()}`;
+      // Use the SHARED countyKey() helper so this matches the key used by
+      // canonicalCountyBasis when looking up spotlight membership. Without
+      // this, counties with punctuation (St. Louis, O'Brien, etc.) were
+      // silently dropped from the KPI numerator + denominator.
+      const key = countyKey(stateName, countyName);
       if (fullStates.has(stateName)) {
         keys.add(key);
         return;
@@ -429,20 +455,8 @@ const MapDashboard = ({ apiUrl }) => {
     // exactly what's visually rendered on the map. Without this, the denominator
     // counts counties OUTSIDE the rep's territory and the numerator counts pin
     // coverage from outside-territory pins — both invisible to the user.
-    const COUNTY_RENAMES_LOCAL = { 'OGLALALAKOTA': 'SHANNON' };
-    const normalizeCountyName = (name) => {
-      let n = String(name || '').toUpperCase().trim();
-      n = n.replace(/ CITY$/, '');
-      n = n.replace(/^SAINT /, 'ST ').replace(/^SAINTE /, 'STE ');
-      n = n.replace(/^ST\. /, 'ST ').replace(/^STE\. /, 'STE ');
-      n = n.replace(/\./g, '').replace(/'/g, '').replace(/Ñ/g, 'N').replace(/ñ/g, 'N');
-      n = n.replace(/^DE /, 'DE').replace(/^LA /, 'LA').replace(/^LE /, 'LE');
-      n = n.replace(/-/g, ' ');
-      n = n.replace(/\s+/g, '');
-      if (COUNTY_RENAMES_LOCAL[n]) n = COUNTY_RENAMES_LOCAL[n];
-      return n;
-    };
-    const normalizeState = (s) => String(s || '').toUpperCase().trim().replace(/\s+/g, ' ');
+    // Uses the shared countyKey() helper hoisted at module scope so the
+    // spotlight set and the lookup keys never drift.
 
     const FIPS_TO_STATE_LOCAL = {
       "01":"Alabama","02":"Alaska","04":"Arizona","05":"Arkansas","06":"California","08":"Colorado","09":"Connecticut","10":"Delaware",
@@ -458,7 +472,7 @@ const MapDashboard = ({ apiUrl }) => {
     const aggregated = new Map(); // key -> { layers: {...}, dupeCount }
     let duplicateCount = 0;
     filteredDensityData.forEach(d => {
-      const key = `${normalizeState(d.state)}|${normalizeCountyName(d.county)}`;
+      const key = countyKey(d.state, d.county);
       const existing = aggregated.get(key);
       if (existing) {
         duplicateCount++;
@@ -479,7 +493,7 @@ const MapDashboard = ({ apiUrl }) => {
     countiesGeoJSON.features.forEach(feat => {
       const stateName = FIPS_TO_STATE_LOCAL[feat.properties.STATE];
       if (!stateName) return;
-      const key = `${normalizeState(stateName)}|${normalizeCountyName(feat.properties.NAME)}`;
+      const key = countyKey(stateName, feat.properties.NAME);
       geomLookup.set(key, feat);
     });
 
