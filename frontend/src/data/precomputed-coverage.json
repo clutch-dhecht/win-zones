@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-14T11:11:58.796Z",
+  "generatedAt": "2026-05-16T12:00:21.055Z",
   "entries": [
     {
       "market": "wheat_abm",
@@ -38,7 +38,7 @@
     {
       "market": "rice_abm",
       "radius": 75,
-      "visiblePinsCount": 242,
+      "visiblePinsCount": 292,
       "canonicalCountiesCount": 418,
       "missingGeometry": 1,
       "outsideSpotlight": 0,

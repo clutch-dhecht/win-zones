@@ -179,6 +179,7 @@ async def seed_all(db):
         await _seed_mcgregor(db, existing_set)
         await _seed_nutrien(db, existing_set)
         await _seed_rice_commercial(db, existing_set)
+        await _seed_simplot(db, existing_set)
         await _seed_abm_locations(db, existing_set)
         await _seed_hogs(db)
         await _dedup_cleanup(db)
@@ -479,6 +480,57 @@ async def _seed_nutrien(db, existing_set):
         await db.location_points.delete_many({'layer': 'Nutrien Locations'})
         await db.location_points.insert_many(points)
     logger.info(f"Seeded {len(points)} Nutrien Locations")
+
+
+async def _seed_simplot(db, existing_set):
+    """Seed Simplot location points from mp_Simplot_Locations.xlsx.
+
+    195 rows in source (177 US + 18 Canada). Only US locations are seeded —
+    Canadian pins would render as dead dots when Rice market (no state filter)
+    is selected.
+    """
+    if 'Simplot' in existing_set:
+        count = await db.location_points.count_documents({'layer': 'Simplot'})
+        if count >= 150:
+            return
+    xlsx_path = SEED_DIR / 'simplot_locations.xlsx'
+    if not xlsx_path.exists():
+        return
+    logger.info("Seeding Simplot Locations...")
+    df = pd.read_excel(xlsx_path)
+    points = []
+    for _, row in df.iterrows():
+        country = str(row.get('Country', '')).strip() if pd.notna(row.get('Country')) else ''
+        if country and country.upper() not in ('USA', 'US', 'UNITED STATES'):
+            continue  # US-only — skip Canada
+        branch = str(row.get('Branch Name', '')).strip() if pd.notna(row.get('Branch Name')) else ''
+        address = str(row.get('Street', '')).strip() if pd.notna(row.get('Street')) else ''
+        city = str(row.get('City', '')).strip() if pd.notna(row.get('City')) else ''
+        state_raw = str(row.get('State/Prov', '')).strip() if pd.notna(row.get('State/Prov')) else ''
+        zip_code = str(row.get('Zip/Postal', '')).strip() if pd.notna(row.get('Zip/Postal')) else ''
+        phone = str(row.get('Phone', '')).strip() if pd.notna(row.get('Phone')) else ''
+        if not city or not state_raw:
+            continue
+        state_full = _to_state_full(state_raw)
+        if not state_full:
+            continue
+        geo = _geocode(city, state_full)
+        if not geo:
+            logger.warning(f"Simplot: could not geocode {city}, {state_full}")
+            continue
+        doc = {
+            'name': branch or 'Simplot', 'layer': 'Simplot',
+            'city': city.title(), 'state': state_full,
+            'lat': geo['lat'], 'lon': geo['lon'],
+        }
+        if address: doc['address'] = address
+        if zip_code: doc['zip'] = zip_code
+        if phone: doc['phone'] = phone
+        points.append(doc)
+    if points:
+        await db.location_points.delete_many({'layer': 'Simplot'})
+        await db.location_points.insert_many(points)
+    logger.info(f"Seeded {len(points)} Simplot points")
 
 
 async def _seed_rice_commercial(db, existing_set):

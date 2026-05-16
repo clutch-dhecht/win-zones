@@ -322,6 +322,13 @@ export const LAYER_CONFIG = {
     markerColor: "#F59E0B",
     order: 42
   },
+  "Simplot": {
+    type: "point",
+    radius: { enabled: false, default: 50, options: [25, 50, 100] },
+    color: "#1E40AF",
+    markerColor: "#1E40AF",
+    order: 43
+  },
 
   // --- DENSITY LAYERS (County-level aggregations) ---
   "1000+ Wheat Growers": {
