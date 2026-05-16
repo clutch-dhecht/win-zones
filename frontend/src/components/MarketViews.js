@@ -42,7 +42,7 @@ const MARKET_PRESETS = {
     layers: [
       'Riceland Co-op', 'Supreme Rice', 'Producers Rice Mill',
       'Poinsett Rice & Grain', 'Farmers Rice', 'Triton Fumigation',
-      'Helena Agri', ...NUTRIEN_SUBLAYERS,
+      'Helena Agri', ...NUTRIEN_SUBLAYERS, 'Simplot',
       '1000+ Rice Growers', 'Rice Acres',
     ],
     gateByDensityLayers: ['1000+ Rice Growers', 'Rice Acres'],
@@ -71,7 +71,7 @@ const MARKET_PRESETS = {
       'FSS Grain', 'FSS Flour Mills', 'FSS Specialty Mills', 'FSS Mix Plants',
       'Terminals Rough Rice',
       'Riceland Co-op', 'Supreme Rice', 'Producers Rice Mill',
-      'Poinsett Rice & Grain', 'Farmers Rice', 'Triton Fumigation',
+      'Poinsett Rice & Grain', 'Farmers Rice', 'Triton Fumigation', 'Simplot',
       'Grain Elevators', 'CLS Customer Locations', 'Grain Fumigation',
       '1000+ Rice Growers', 'Rice Acres',
     ],
