@@ -182,6 +182,7 @@ async def seed_all(db):
         await _seed_simplot(db, existing_set)
         await _seed_abm_locations(db, existing_set)
         await _seed_hogs(db)
+        await _enrich_locations(db)
         await _dedup_cleanup(db)
 
         logger.info("Seed check complete")
@@ -776,6 +777,197 @@ def _dedup_jaccard(a, b):
 
 def _dedup_completeness(p):
     return sum(1 for v in p.values() if v not in (None, '', 'nan'))
+
+
+# ─── Enrichment pass ─────────────────────────────────────────────────────────
+# Match-and-enrich (Option A) — never adds new pins, only updates existing docs
+# with contact info from 8 source files in seed_data/enrichment/. Idempotent
+# via the `enriched_at` field: skipped on subsequent restarts.
+
+ENRICH_DIR = SEED_DIR / 'enrichment'
+ENRICH_VERSION = 'v1'
+
+_STATE_ABBR = ABBREV_TO_STATE  # alias
+
+def _enrich_norm_name(s):
+    s = re.sub(r"[.,'\"&]", '', str(s or '').lower())
+    s = re.sub(r"\bco-?op(erative)?\b", 'coop', s)
+    s = re.sub(r"\b(inc|llc|ltd|corp|company|co)\b", '', s)
+    # Strip suffixes like "– Grain", "- Agronomy" so CHS xlsx "Yuma – Grain" matches DB "Yuma"
+    s = re.sub(r"\s*[-–—]\s*(grain|agronomy|office|terminal|storage|main office|main|hq|seed|feed|service center|fertilizer|energy).*$", '', s)
+    return re.sub(r"\s+", ' ', s).strip()
+
+def _enrich_norm_city(s):
+    return re.sub(r"[.,]", '', str(s or '').lower()).strip()
+
+def _enrich_norm_state(s):
+    s = str(s or '').strip()
+    if len(s) == 2 and s.upper() in _STATE_ABBR:
+        return _STATE_ABBR[s.upper()].lower()
+    return s.lower()
+
+async def _enrich_build_index(db, layers):
+    """Map (norm_name, norm_city, norm_state) → [doc_id, ...] for one or more layers."""
+    if isinstance(layers, str):
+        layers = [layers]
+    idx = {}
+    cursor = db.location_points.find({'layer': {'$in': layers}})
+    async for d in cursor:
+        k = (_enrich_norm_name(d.get('name')), _enrich_norm_city(d.get('city')), _enrich_norm_state(d.get('state')))
+        idx.setdefault(k, []).append(d['_id'])
+    return idx
+
+async def _enrich_apply(db, ids, update):
+    if not update or not ids:
+        return 0
+    update['enriched_at'] = ENRICH_VERSION
+    await db.location_points.update_many({'_id': {'$in': ids}}, {'$set': update})
+    return len(ids)
+
+async def _enrich_from_google_csv(db, csv_path, target_layer, label):
+    """Google-scraped CSVs: business_phone, email_1/2, business_website, sub_types, social_*"""
+    import csv as _csv
+    if not csv_path.exists():
+        logger.warning(f"Enrichment skipped — {csv_path.name} missing")
+        return
+    idx = await _enrich_build_index(db, target_layer)
+    enriched, unmatched = 0, 0
+    with open(csv_path, encoding='utf-8', errors='replace') as f:
+        for row in _csv.DictReader(f):
+            k = (_enrich_norm_name(row.get('business_name')),
+                 _enrich_norm_city(row.get('city')),
+                 _enrich_norm_state(row.get('state')))
+            ids = idx.get(k)
+            if not ids:
+                unmatched += 1
+                continue
+            u = {}
+            for src, dst in [('business_phone','phone'),('email_1','email'),
+                             ('business_website','website'),('sub_types','sub_types'),
+                             ('facebook','social_facebook'),('linkedin','social_linkedin')]:
+                v = (row.get(src) or '').strip()
+                if v:
+                    u[dst] = v
+            email2 = (row.get('email_2') or '').strip()
+            email1 = (row.get('email_1') or '').strip()
+            if email2 and email2 != email1:
+                u['email_secondary'] = email2
+            enriched += await _enrich_apply(db, ids, u)
+    logger.info(f"Enrich {label}: {enriched} docs updated; {unmatched} CSV rows unmatched")
+
+async def _enrich_from_fss(db):
+    """FSS CSV has Manager_Name + Email + Title + Phone — the only file with contact names."""
+    import csv as _csv
+    p = ENRICH_DIR / 'fss_enrichment.csv'
+    if not p.exists():
+        return
+    cat_to_layer = {
+        'Grain': 'FSS Grain',
+        'Flour Mills': 'FSS Flour Mills', 'Flour Mill': 'FSS Flour Mills',
+        'Specialty Mills': 'FSS Specialty Mills', 'Specialty Mill': 'FSS Specialty Mills',
+        'Mix Plants': 'FSS Mix Plants', 'Mix Plant': 'FSS Mix Plants',
+    }
+    indexes = {}
+    for layer in set(cat_to_layer.values()):
+        indexes[layer] = await _enrich_build_index(db, layer)
+    enriched, unmatched = 0, 0
+    with open(p, encoding='utf-8', errors='replace') as f:
+        for row in _csv.DictReader(f):
+            layer = cat_to_layer.get((row.get('Category') or '').strip())
+            if not layer:
+                continue
+            k = (_enrich_norm_name(row.get('Company Name')),
+                 _enrich_norm_city(row.get('City')),
+                 _enrich_norm_state(row.get('State_Parsed')))
+            ids = indexes[layer].get(k)
+            if not ids:
+                unmatched += 1
+                continue
+            u = {}
+            for src, dst in [('Phone_Number','phone'),('Manager_Name','contact_name'),
+                             ('Title','contact_title'),('Email','email'),('Capacity','capacity')]:
+                v = (row.get(src) or '').strip()
+                if v and v.lower() != 'nan':
+                    u[dst] = v
+            enriched += await _enrich_apply(db, ids, u)
+    logger.info(f"Enrich FSS: {enriched} docs updated; {unmatched} CSV rows unmatched")
+
+async def _enrich_from_org_xlsx(db, path, layer_map, label):
+    """Curated xlsx with activity flags (CHS, MKC, McGregor).
+    layer_map: dict mapping any-flag → target layer set, e.g. {'Grain':'CHS Grain','Agronomy':'CHS Agronomy'}.
+    """
+    if not path.exists():
+        return
+    wb = pd.read_excel(path, sheet_name=0)
+    all_layers = sorted(set(layer_map.values()))
+    idx = await _enrich_build_index(db, all_layers)
+    enriched, unmatched = 0, 0
+
+    flag_cols = [c for c in wb.columns if c not in
+                 ('Division','Organization','Website','Location Name','State','Address',
+                  'Street Address','City','ZIP','Phone','Notes','PO Box')]
+
+    for _, row in wb.iterrows():
+        name = row.get('Location Name')
+        city = row.get('City')
+        state = row.get('State')
+        if pd.isna(name) or pd.isna(city) or pd.isna(state):
+            continue
+        k = (_enrich_norm_name(name), _enrich_norm_city(city), _enrich_norm_state(state))
+        ids = idx.get(k)
+        if not ids:
+            unmatched += 1
+            continue
+        services = {}
+        for col in flag_cols:
+            v = row.get(col)
+            if pd.notna(v) and str(v).strip().lower() == 'yes':
+                key = re.sub(r'[^a-z0-9]+', '_', str(col).lower()).strip('_')
+                services[key] = True
+        u = {}
+        for src, dst in [('Phone','phone'),('Website','website'),('Notes','notes')]:
+            v = row.get(src)
+            if pd.notna(v):
+                vs = str(v).strip()
+                if vs and vs.lower() != 'nan':
+                    u[dst] = vs
+        div = row.get('Division') if 'Division' in wb.columns else row.get('Organization')
+        if pd.notna(div):
+            ds = str(div).strip()
+            if ds and ds.lower() != 'nan':
+                u['division'] = ds
+        if services:
+            u['services'] = services
+        enriched += await _enrich_apply(db, ids, u)
+    logger.info(f"Enrich {label}: {enriched} docs updated; {unmatched} rows unmatched")
+
+async def _enrich_locations(db):
+    """Run all enrichment passes. Idempotent — skips layers where at least 90%
+    of docs already have `enriched_at: v1` (full pass already applied)."""
+    if not ENRICH_DIR.exists():
+        logger.info("Enrichment skipped — seed_data/enrichment/ not present")
+        return
+    # Fast skip: if Pest Control (the biggest layer) is already >=80% enriched, assume done
+    total_pc = await db.location_points.count_documents({'layer': 'Pest Control'})
+    enriched_pc = await db.location_points.count_documents(
+        {'layer': 'Pest Control', 'enriched_at': ENRICH_VERSION})
+    if total_pc > 0 and enriched_pc / total_pc >= 0.8:
+        logger.info(f"Enrichment idempotent skip — Pest Control already {enriched_pc}/{total_pc} at {ENRICH_VERSION}")
+        return
+
+    logger.info("Running location enrichment pass...")
+    await _enrich_from_google_csv(db, ENRICH_DIR / 'pest_control_enrichment.csv', 'Pest Control', 'Pest Control')
+    await _enrich_from_google_csv(db, ENRICH_DIR / 'feed_stores_enrichment.csv', 'Feed Stores', 'Feed Stores')
+    await _enrich_from_google_csv(db, ENRICH_DIR / 'feed_manufacturers_enrichment.csv', 'Feed Manufacturers', 'Feed Manufacturers')
+    await _enrich_from_google_csv(db, ENRICH_DIR / 'grain_elevators_enrichment.csv', 'Grain Elevators', 'Grain Elevators')
+    await _enrich_from_fss(db)
+    await _enrich_from_org_xlsx(db, ENRICH_DIR / 'chs_enrichment.xlsx',
+                                {'Grain':'CHS Grain','Agronomy':'CHS Agronomy'}, 'CHS')
+    await _enrich_from_org_xlsx(db, ENRICH_DIR / 'mkc_enrichment.xlsx',
+                                {'Grain':'MKC Grain','Agronomy':'MKC Agronomy'}, 'MKC')
+    await _enrich_from_org_xlsx(db, ENRICH_DIR / 'mcgregor_enrichment.xlsx',
+                                {'_any':'McGregor Locations'}, 'McGregor')
+    logger.info("Enrichment pass complete")
 
 
 async def _dedup_cleanup(db):
